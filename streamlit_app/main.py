@@ -5,7 +5,8 @@ import streamlit as st
 st.set_page_config(
     page_title="머물머물 관리자 대시보드",
     page_icon="🖥️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # pages = [
@@ -42,7 +43,7 @@ st.set_page_config(
 # nav = st.navigation(pages)
 # nav.run()
 
-st.title("🔥 머물머물 운영 리포트 대시보드 (레이아웃 프리뷰용)")
+st.title("🔥 머물머물 운영 리포트 대시보드")
 st.markdown(
     """
 이 화면은 **레이아웃 확인용 더미 버전**입니다.  
