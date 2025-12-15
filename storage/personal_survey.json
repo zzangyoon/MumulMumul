@@ -43,8 +43,14 @@
       "category": "P/A",
       "question": "과제를 시작할 때, 미리 계획을 세우지 않으면 불안하다.",
       "choices": [
-        { "label": "그렇다", "value": 3 },
-        { "label": "아니다", "value": 1 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "analyst": 1, "pillar": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "doer": 1, "supporter": 1 }
+        }
       ]
     },
     {
@@ -52,8 +58,14 @@
       "category": "S/T",
       "question": "나는 혼자 공부하는 시간보다 여럿이 모여 토론하는 시간을 즐긴다.",
       "choices": [
-        { "label": "그렇다", "value": 1 },
-        { "label": "아니다", "value": 3 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "supporter": 1, "doer": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "analyst": 1, "balancer": 1 }
+        }
       ]
     },
     {
@@ -61,8 +73,14 @@
       "category": "G/R",
       "question": "솔직히 동료에게 피드백을 줄 때, 감정보다 논리적 오류를 지적하는 것이 더 쉽다.",
       "choices": [
-        { "label": "그렇다", "value": 3 },
-        { "label": "아니다", "value": 1 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "pillar": 1, "analyst": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "supporter": 1, "balancer": 1 }
+        }
       ]
     },
     {
@@ -70,8 +88,14 @@
       "category": "P/A",
       "question": "나는 일단 시작해서 경험으로 배우는 것이 문서나 매뉴얼을 꼼꼼히 읽는 것보다 편하다.",
       "choices": [
-        { "label": "그렇다", "value": 1 },
-        { "label": "아니다", "value": 3 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "doer": 1, "balancer": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "analyst": 1, "pillar": 1 }
+        }
       ]
     },
     {
@@ -79,8 +103,14 @@
       "category": "S/T",
       "question": "어려운 문제에 막히면, 혼자 해결책을 찾을 때까지 파고드는 편이다.",
       "choices": [
-        { "label": "그렇다", "value": 3 },
-        { "label": "아니다", "value": 1 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "analyst": 1, "pillar": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "supporter": 1, "doer": 1 }
+        }
       ]
     },
     {
@@ -88,8 +118,14 @@
       "category": "G/R",
       "question": "팀 내 갈등이 생길 때, 나는 분위기 유지를 위해 내 의견을 포기할 때가 많다.",
       "choices": [
-        { "label": "그렇다", "value": 1 },
-        { "label": "아니다", "value": 3 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "supporter": 1, "balancer": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "pillar": 1, "doer": 1 }
+        }
       ]
     },
     {
@@ -97,8 +133,14 @@
       "category": "P/A",
       "question": "작업 중 예상치 못한 오류를 발견하면, 일정이 늦춰져도 반드시 잡고 넘어가야 한다.",
       "choices": [
-        { "label": "그렇다", "value": 3 },
-        { "label": "아니다", "value": 1 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "pillar": 1, "analyst": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "doer": 1, "balancer": 1 }
+        }
       ]
     },
     {
@@ -106,8 +148,14 @@
       "category": "S/T",
       "question": "팀 활동 시, 팀원들이 나에게 도움을 요청하지 않으면 서운한 기분이 든다.",
       "choices": [
-        { "label": "그렇다", "value": 1 },
-        { "label": "아니다", "value": 3 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "supporter": 1, "balancer": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "analyst": 1, "doer": 1 }
+        }
       ]
     },
     {
@@ -115,8 +163,14 @@
       "category": "G/R",
       "question": "프로젝트에서 가장 중요한 것은 '재미있는 과정'보다 '최종 결과물의 완벽함'이다.",
       "choices": [
-        { "label": "그렇다", "value": 3 },
-        { "label": "아니다", "value": 1 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "pillar": 1, "analyst": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "supporter": 1, "balancer": 1 }
+        }
       ]
     },
     {
@@ -124,8 +178,14 @@
       "category": "G/R",
       "question": "나는 동료가 나를 인정해주고 격려해줄 때 가장 큰 동기 부여를 얻는다.",
       "choices": [
-        { "label": "그렇다", "value": 1 },
-        { "label": "아니다", "value": 3 }
+        {
+          "label": "그렇다",
+          "personaWeights": { "supporter": 1, "doer": 1 }
+        },
+        {
+          "label": "아니다",
+          "personaWeights": { "analyst": 1, "pillar": 1 }
+        }
       ]
     }
   ],
@@ -156,33 +216,5 @@
       "advice": "피드백 시 논리 외에 감정적인 지지도 필요함을 인식해 언어를 선택하세요.",
       "team_role": "명확한 목표와 규칙을 제시하고 프로젝트의 기술적 완성도를 관리합니다."
     }
-  },
-
-  "mapping_rules": [
-    {
-      "score_min": 27,
-      "score_max": 30,
-      "character": "analyst"
-    },
-    {
-      "score_min": 23,
-      "score_max": 26,
-      "character": "pillar"
-    },
-    {
-      "score_min": 19,
-      "score_max": 22,
-      "character": "balancer"
-    },
-    {
-      "score_min": 15,
-      "score_max": 18,
-      "character": "supporter"
-    },
-    {
-      "score_min": 10,
-      "score_max": 14,
-      "character": "doer"
-    }
-  ]
+  }
 }

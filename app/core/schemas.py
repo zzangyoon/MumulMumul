@@ -28,6 +28,7 @@ class Camp(Base):
     name = Column(String(255), nullable=False)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
+    total_weeks = Column(Integer, nullable=True)
 
     users = relationship("User", back_populates="camp")
 

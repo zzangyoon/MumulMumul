@@ -14,18 +14,9 @@ def list_camps(db: Session = Depends(get_db)):
     - 별도 Pydantic 모델 없이 dict 리스트로 리턴
     """
     camps = db.query(Camp).order_by(Camp.camp_id.asc()).all()
-    result = []
-    for c in camps:
-        result.append(
-            {
-                "camp_id": c.camp_id,
-                "name": c.name,
-                "start_date": c.start_date.date().isoformat() if c.start_date else None,
-                "end_date": c.end_date.date().isoformat() if c.end_date else None,
-            }
-        )
-    print(result)
-    return result
+    return {
+        "camps": camps
+    }
 
 
 @router.get("/{camp_id}/students")

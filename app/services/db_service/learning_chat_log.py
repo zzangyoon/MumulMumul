@@ -6,24 +6,12 @@ from pymongo.database import Database
 from requests import Session
 from app.core.db import get_db
 from app.core.mongodb import CurriculumInsights, LearningChatLog, get_mongo_db
-from app.services.db_service.camp import get_camp_by_id
+from app.services.db_service.camp import get_week_range_by_index
 
 mongo_db: Database = get_mongo_db()
 chat_col = mongo_db["learning_chat_logs"]
 
 db = get_db()
-
-def get_week_range_by_index(db: Session, camp_id: int, week_index: int) -> tuple[datetime, datetime]:
-    """
-    camp_id, week_index로부터 해당 주차의 시작/끝 날짜를 계산하는 헬퍼.
-    여기서는 예시로만 두고, 실제 로직은 캠프 시작일 기준으로 구현.
-    """
-    camp = get_camp_by_id(db, camp_id)
-    
-    camp_start = camp.start_date
-    week_start = camp_start + timedelta(weeks=week_index - 1)
-    week_end = week_start + timedelta(weeks=1)
-    return week_start, week_end
 
 
 def fetch_weekly_logs(db: Session, camp_id: int, week_index: int) -> List[Dict[str, Any]]:

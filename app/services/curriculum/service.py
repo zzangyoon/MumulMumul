@@ -8,7 +8,7 @@ from app.services.curriculum.generate_log_insights.prompts import CurriculumInsi
 from app.services.db_service.camp import get_camp_by_id
 from app.services.db_service.curriculum_config import get_curriculum_config_for_camp
 from app.services.db_service.curriculum_reports import fetch_curriculum_report, upsert_curriculum_report
-from app.services.db_service.learning_chat_log import fetch_weekly_logs, get_week_range_by_index, update_insights_for_logs, fetch_weekly_logs_no_insights
+from app.services.db_service.learning_chat_log import get_week_range_by_index, update_insights_for_logs, fetch_weekly_logs_no_insights, fetch_weekly_logs
 
 from .agent import generate_curriculum_report
 

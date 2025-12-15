@@ -349,56 +349,7 @@ register_mongo_model(
 )
 
 # =====================================
-# 3-5. Feedback Board 모델 정의
-# =====================================
-
-FeedbackCategory = Literal["concern", "suggestion", "other"]
-RiskLevel = Literal["low", "medium", "high"]
-
-
-class AnalysisBlock(BaseModel):
-    """LLM 기반 분석 결과 — 재계산 가능"""
-    normalized_text: str = ""
-    category: FeedbackCategory = "other"      # 고민/건의/기타
-    topic_tags: List[str] = []                # NLP 토픽 태그
-    sentiment: Optional[str] = None           # "positive/negative/neutral" 정도
-    importance_score: float = 0.0             # 0~10 우선순위 스코어(LLM가 생성하게)
-
-
-class ModerationBlock(BaseModel):
-    """욕설/실명/위험도 분석 결과"""
-    is_toxic: bool = False
-    has_realname: bool = False
-    risk_level: RiskLevel = "low"
-    moderation_note: Optional[str] = None     # 왜 위험한지 한 줄 메모
-
-
-class FeedbackBoardPost(BaseModel):
-    """Mongo 도큐먼트 1건에 해당하는 구조"""
-    id: Optional[str] = Field(None, alias="_id")
-
-    camp_id: int
-    created_at: datetime
-    
-    author_id: Optional[int] = None  # 또는 str (익명 ID / 해시된 값 등)
-
-    raw_text: str
-
-    analysis: AnalysisBlock = AnalysisBlock()
-    moderation: ModerationBlock = ModerationBlock()
-
-# Mongo 레지스트리에 등록
-register_mongo_model(
-    FeedbackBoardPost,
-    collection_name="curriculum_reports",
-    indexes=[
-        ("camp_id", 1),
-        ("created_at", -1)
-    ],
-)
-
-# =====================================
-# 3-6. 출결 리포트 모델 정의
+# 3-5. 출결 리포트 모델 정의
 # =====================================
 class AttendanceSummary(BaseModel):
     attendance_rate: float

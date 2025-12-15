@@ -37,7 +37,8 @@ session_cache = st.session_state["attendance_session"]
 
 # --- 캠프 목록은 세션에 한 번만 저장 ---
 if session_cache["camps"] is None:
-    camps = fetch_camps()  # [{camp_id, name, start_date, end_date, ...}, ...] 가정
+    res = fetch_camps()  # [{camp_id, name, start_date, end_date, ...}, ...] 가정
+    camps = res.get("camps", [])
     camp_info = {c["name"]: c for c in camps}
     session_cache["camps"] = camps
     session_cache["camp_info"] = camp_info

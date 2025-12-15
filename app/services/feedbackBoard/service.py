@@ -1,103 +1,45 @@
-# app/services/feedback_board/report_service.py
+from requests import Session
 
-from typing import Dict, Any
-from pymongo.database import Database
-
-from app.services.feedbackBoard.generate_report.calculator import parse_posts, aggregate_feedback_stats
-from .wordcloud import generate_wordclouds_per_category
-from app.services.feedbackBoard.generate_report.llm import generate_feedback_ai_report
-
-# app/services/feedback_board/service.py
-
-from typing import List
-from pymongo.database import Database
-from datetime import datetime
-
-from app.core.mongodb import FeedbackBoardPost
-from app.services.feedbackBoard.analyze_feedback.llm import analyze_single_post
+from app.services.db_service.camp import get_week_range_by_index
+from app.services.db_service.feedbackBoard import get_feedback_posts_by_date_range
 
 
-def attach_analysis_to_new_posts(mongo_db: Database, camp_id: int) -> int:
-    """
-    아직 analysis / moderation 이 비어 있는 글들만 찾아서
-    LLM으로 분석 결과를 채워준다.
-    """
-    coll = mongo_db["feedback_board_posts"]
-
-    cursor = coll.find({
-        "camp_id": camp_id,
-        "analysis.normalized_text": {"$in": [None, ""]},
-    })
-
-    updated = 0
-    for doc in cursor:
-        post = FeedbackBoardPost(**doc)
-        result = analyze_single_post(post.raw_text)
-
-        coll.update_one(
-            {"_id": doc["_id"]},
-            {
-                "$set": {
-                    "analysis": result.analysis.model_dump(),
-                    "moderation": result.moderation.model_dump(),
-                }
-            }
-        )
-        updated += 1
-
-    return updated
-
-def create_feedback_board_report(
-    mongo_db: Database,
+def build_feedback_report(
+    db: Session,
     camp_id: int,
-    wordcloud_output_dir: str,
-) -> Dict[str, Any]:
-    coll = mongo_db["feedback_board_posts"]
-
-    # 0) 아직 분석 안 된 글들에 대해 analysis/moderation 채우기
-    attach_analysis_to_new_posts(mongo_db, camp_id)
-
-    # 1) 이 캠프의 모든 피드백 글 가져오기
-    docs = list(coll.find({"camp_id": camp_id}))
-    posts = parse_posts(docs)
-
-    # 2) 집계/통계 생성
-    stats = aggregate_feedback_stats(posts)
-
-    # 3) 워드클라우드 이미지 생성
-    wc_paths = generate_wordclouds_per_category(
-        stats["wc_text_by_category"],
-        output_dir=wordcloud_output_dir,
+    week_index: int,
+) -> dict:
+    """
+    1) 기간 내 FeedbackBoardPost 로드
+    2) 아직 분석 안 된 글이면 → 일괄 분석 (필터링/의미 분리/분류/위험도/요약/키워드)
+    3) 주간 기준으로 aggregate 해서
+       - logs
+       - week_summary_by_camp_week
+       - key_topics_by_camp_week
+       - ops_actions_by_camp_week
+       를 만들어서 반환
+    """
+    # 1) 기간 내 FeedbackBoardPost 로드
+    start_date, end_date = get_week_range_by_index(
+        db,
+        camp_id,
+        week_index,
     )
 
-    # 4) AI 기반 우선순위 + 액션 리포트 생성
-    ai_report = generate_feedback_ai_report(stats)
+    rows = get_feedback_posts_by_date_range(camp_id, start_date, end_date)
 
-    # 5) UI에서 바로 쓸 수 있는 payload로 구성
-    summary = {
-        "total_posts": stats["total_posts"],
-        "toxic_count": stats["toxic_count"],
-        "high_risk_count": stats["high_risk_count"],
-        "posts_by_category": stats["posts_by_category"],
-    }
+    # 2) 아직 분석 안 된 글이면 → 일괄 분석 (필터링/분류/위험도/요약/키워드)
+    for row in rows:
+        if not row.is_analyzed:
+            pass  # TODO: 분석 로직 추가
+    
+    # 3) 주간 기준으로 aggregate 해서 반환
+    
 
-    charts = {
-        "wordcloud_paths": wc_paths,              # {category: path}
-        "posts_by_category": stats["posts_by_category"],
-    }
-
-    # tables는 우선순위 Top3 리스트
-    tables = {
-        "priority_items": [
-            item.model_dump() for item in ai_report.priority_items
-        ]
-    }
-
-    ai_insights = ai_report.model_dump()
-
+    ...
     return {
-        "summary": summary,
-        "charts": charts,
-        "tables": tables,
-        "ai_insights": ai_insights,
+        "logs": rows,
+        "week_summary_by_camp_week": ...,
+        "key_topics_by_camp_week": ...,
+        "ops_actions_by_camp_week": ...,
     }

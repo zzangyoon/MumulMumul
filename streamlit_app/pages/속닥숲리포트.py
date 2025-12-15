@@ -218,6 +218,7 @@ def build_ops_actions(current_df: pd.DataFrame):
     # 3개까지만 사용
     return actions[:3]
 
+
 def build_weekly_summary(current_df: pd.DataFrame):
     if current_df.empty:
         return {
@@ -299,71 +300,65 @@ if current_df.empty:
     st.warning("해당 캠프/주차에 대한 더미 데이터가 없습니다. 필터를 바꿔보세요.")
     st.stop()
 
-# ============================================
-# 3. 탭 구성: 이번 주 / 상세 데이터
-# ============================================
-tab_week, tab_all, tab_detail = st.tabs(["📊 이번 주", "📉 누적", "📂 상세 데이터"])
-
 # =========================================================
-# 탭 1) 이번 주 리포트
+# 이번 주 리포트
 # =========================================================
-with tab_week:
-    st.subheader(f"📊 이번 주 리포트 — {camp_name} / Week {selected_week}")
+st.subheader(f"📊 {camp_name} / Week {selected_week} 리포트")
 
-    # -----------------------------
-    # (1) 상단 KPI 카드 & 워드클라우드
-    # -----------------------------
-    col_wc, col_summary = st.columns([1.2, 1])
+# -----------------------------
+# (1) 상단 KPI 카드 & 워드클라우드
+# -----------------------------
+col_wc, col_summary = st.columns([1.2, 1])
 
-    # 왼쪽: 워드클라우드
-    with col_wc:
-        st.markdown("#### 🔤 키워드 워드클라우드")
-        placeholder_url = "https://via.placeholder.com/640x320?text=WordCloud+Demo"
-        st.image(placeholder_url, caption="(데모) 이번 주 주요 키워드 워드클라우드")
+# 왼쪽: 워드클라우드
+with col_wc:
+    st.markdown("#### 🔤 키워드 워드클라우드")
+    placeholder_url = "https://via.placeholder.com/640x320?text=WordCloud+Demo"
+    st.image(placeholder_url, caption="(데모) 이번 주 주요 키워드 워드클라우드")
 
-    # 오른쪽: 핵심 요약 3종
-    with col_summary:        
-        total_posts = len(current_df)
-        toxic_posts = int(current_df["is_toxic"].sum())
-        toxic_ratio = toxic_posts / total_posts if total_posts > 0 else 0.0
+# 오른쪽: 핵심 요약 3종
+with col_summary:        
+    total_posts = len(current_df)
+    toxic_posts = int(current_df["is_toxic"].sum())
+    toxic_ratio = toxic_posts / total_posts if total_posts > 0 else 0.0
 
-        st.metric("전체 글 수 (이번 주)", f"{total_posts}건")
-        st.metric("위험 글 수", f"{toxic_posts}건")
-        st.metric("부정 글 비율", f"{toxic_ratio*100:.1f}%")
+    st.metric("전체 글 수 (이번 주)", f"{total_posts}건")
+    st.metric("위험 글 수", f"{toxic_posts}건")
+    st.metric("부정 글 비율", f"{toxic_ratio*100:.1f}%")
 
-    st.markdown("---")
+st.markdown("---")
 
-    # -----------------------------
-    # (2) 이번 주 상태 요약 + 주요 이슈
-    # -----------------------------
-    st.markdown("### 🧭 이번 주 상태 요약")
+# -----------------------------
+# (2) 이번 주 상태 요약 + 주요 이슈
+# -----------------------------
+st.markdown("### 🧭 이번 주 상태 요약")
 
-    weekly_info = build_weekly_summary(current_df)
-    st.info(weekly_info["mood_summary"])
+weekly_info = build_weekly_summary(current_df)
+st.info(weekly_info["mood_summary"])
 
-    issues = weekly_info["issues"]
-    if issues:
-        st.markdown("#### 🔍 주요 이슈 Top 3")
-        cols = st.columns(len(issues))
-        for idx, issue in enumerate(issues):
-            with cols[idx]:
-                with st.container(border=True):
-                    st.markdown(f"**{issue['label']}**")
-                    st.markdown(f"- 글 수: {issue['count']}건")
-                    st.markdown(f"- 비중: {issue['ratio']*100:.1f}%")
-                    st.caption(issue["comment"])
-    else:
-        st.write("이번 주에는 두드러지는 이슈가 많지 않습니다.")
+issues = weekly_info["issues"]
+if issues:
+    st.markdown("#### 🔍 주요 이슈 Top 3")
+    cols = st.columns(len(issues))
+    for idx, issue in enumerate(issues):
+        with cols[idx]:
+            with st.container(border=True):
+                st.markdown(f"**{issue['label']}**")
+                st.markdown(f"- 글 수: {issue['count']}건")
+                st.markdown(f"- 비중: {issue['ratio']*100:.1f}%")
+                st.caption(issue["comment"])
+else:
+    st.write("이번 주에는 두드러지는 이슈가 많지 않습니다.")
 
-    st.markdown("---")
+st.markdown("---")
 
-    # -----------------------------
-    # (3) 매우 위험한 글 리스트
-    # -----------------------------
-    st.markdown("#### 🚨 주요 위험 글")
+# -----------------------------
+# (3) 매우 위험한 글 리스트
+# -----------------------------
+st.markdown("#### 🚨 주요 위험 글")
 
-    risky_df = current_df[
-    (current_df["severity"] == "high") | (current_df["is_toxic"])
+risky_df = current_df[
+(current_df["severity"] == "high") | (current_df["is_toxic"])
 ].copy()
 
 if risky_df.empty:
@@ -383,367 +378,83 @@ else:
     top_df = risky_df.head(top_n)
     rest_df = risky_df.iloc[top_n:]
 
-    def render_risky_row(r):
-        level_label = "CRITICAL" if r["severity"] == "high" else "HIGH"
-        header = (
-            f"[{level_label}] Week {int(r['week'])} / "
-            f"user {r['user_id']} / {r['created_at']:%Y-%m-%d %H:%M}"
-            f"\n\n {r['summary']}"
-        )
+def render_risky_row(r):
+    level_label = "CRITICAL" if r["severity"] == "high" else "HIGH"
+    header = (
+        f"[{level_label}] Week {int(r['week'])} / "
+        f"user {r['user_id']} / {r['created_at']:%Y-%m-%d %H:%M}"
+        f"\n\n {r['summary']}"
+    )
 
-        # 헤더
-        st.error(f"{header}")
+    # 헤더
+    st.error(f"{header}")
 
-        # CRITICAL인 경우: 헤더 바로 다음 줄에 요약 강조
-        if r["severity"] == "high":
-            st.markdown(f"**요약:** {r['summary']}")
+    # CRITICAL인 경우: 헤더 바로 다음 줄에 요약 강조
+    if r["severity"] == "high":
+        st.markdown(f"**요약:** {r['summary']}")
 
-        # 카테고리/클러스터 뱃지
-        badge_html = f"""
-        <div style="margin:4px 0 8px 0;">
-          <span style="
-                background-color:#eeeeee;
-                border-radius:999px;
-                padding:2px 8px;
-                margin-right:4px;
-                font-size:0.8rem;
-            ">
-            📂 {r['category']}
-          </span>
-          <span style="
-                background-color:#f5f5f5;
-                border-radius:999px;
-                padding:2px 8px;
-                font-size:0.8rem;
-            ">
-            🔎 {r['sub_cluster']}
-          </span>
-        </div>
-        """
-        st.markdown(badge_html, unsafe_allow_html=True)
+    # 카테고리/클러스터 뱃지
+    badge_html = f"""
+    <div style="margin:4px 0 8px 0;">
+        <span style="
+            background-color:#eeeeee;
+            border-radius:999px;
+            padding:2px 8px;
+            margin-right:4px;
+            font-size:0.8rem;
+        ">
+        📂 {r['category']}
+        </span>
+        <span style="
+            background-color:#f5f5f5;
+            border-radius:999px;
+            padding:2px 8px;
+            font-size:0.8rem;
+        ">
+        🔎 {r['sub_cluster']}
+        </span>
+    </div>
+    """
+    st.markdown(badge_html, unsafe_allow_html=True)
 
-        # HIGH(또는 그 외)인 경우: 여기서 요약 표기
-        if r["severity"] != "high":
-            st.markdown(f"- 요약: {r['summary']}")
+    # HIGH(또는 그 외)인 경우: 여기서 요약 표기
+    if r["severity"] != "high":
+        st.markdown(f"- 요약: {r['summary']}")
 
-        st.markdown(f"- (원문) {r['text']}")
-        st.markdown("")
+    st.markdown(f"- (원문) {r['text']}")
+    st.markdown("")
 
-    # 상위 2개는 그리드(2열)로 보여주기
-    cols = st.columns(2)
-    for idx, (_, row) in enumerate(top_df.iterrows()):
-        with cols[idx % 2]:
+# 상위 2개는 그리드(2열)로 보여주기
+cols = st.columns(2)
+for idx, (_, row) in enumerate(top_df.iterrows()):
+    with cols[idx % 2]:
+        with st.container(border=True):
+            render_risky_row(row)
+
+# 나머지는 토글로 숨기기
+if not rest_df.empty:
+    with st.expander(f"나머지 위험 글 {len(rest_df)}개 더 보기"):
+        for _, row in rest_df.iterrows():
             with st.container(border=True):
                 render_risky_row(row)
 
-    # 나머지는 토글로 숨기기
-    if not rest_df.empty:
-        with st.expander(f"나머지 위험 글 {len(rest_df)}개 더 보기"):
-            for _, row in rest_df.iterrows():
-                with st.container(border=True):
-                    render_risky_row(row)
+st.markdown("---")
 
-    st.markdown("---")
+# -----------------------------
+# (4) 운영진 우선 액션 Top 3
+# -----------------------------
+st.markdown("### 🏃 운영진 우선 액션 Top 3")
 
-    # -----------------------------
-    # (4) 운영진 우선 액션 Top 3
-    # -----------------------------
-    st.markdown("### 🏃 운영진 우선 액션 Top 3")
-
-    ops_actions = build_ops_actions(current_df)
-    if ops_actions:
-        cols = st.columns(len(ops_actions))
-        for idx, action in enumerate(ops_actions):
-            with cols[idx]:
-                with st.container(border=True):
-                    st.markdown(f"#### {action['title']}")
-                    st.markdown(f"- **대상**: {action['target']}")
-                    st.markdown(f"- **근거**: {action['reason']}")
-                    st.markdown("**이번 주 실행 액션**")
-                    st.markdown(action["todo"])
-    else:
-        st.info("이번 주 기준으로 제안할 액션이 없습니다.")
-
-
-# =========================================================
-# 탭 2) 누적 리포트 (Week 1 ~ 현재)
-# =========================================================
-with tab_all:
-    # -----------------------------
-    # (1) 장기 타임라인 (요약형)
-    # -----------------------------
-    st.markdown("#### ⏱ 장기 타임라인 (Week 1 ~ 현재)")
-
-    tl_df = upto_df.copy()
-    if tl_df.empty:
-        st.info("타임라인 데이터가 없습니다.")
-    else:
-        weekly_stats = (
-            tl_df.groupby("week")
-            .agg(
-                posts=("text", "count"),
-                toxic=("is_toxic", "sum"),
-            )
-            .reset_index()
-        )
-
-        chart = (
-            alt.Chart(weekly_stats)
-            .mark_line(point=True)
-            .encode(
-                x=alt.X("week:O", title="주차"),
-                y=alt.Y("posts:Q", title="전체 글 수"),
-                tooltip=["week", "posts", "toxic"],
-            )
-            .properties(height=220)
-        )
-        st.altair_chart(chart, use_container_width=True)
-
-    st.markdown("---")
-
-    # -----------------------------
-    # (2) 반복 이슈 요약 (상위 5개)
-    # -----------------------------
-    st.markdown("#### 🔁 반복 이슈 요약 (Week 1 ~ 현재, 이번 주 포함 이슈만)")
-
-    repeat_issues = build_repeat_issues(upto_df)
-
-    if repeat_issues:
-        # 이번 주에 실제로 등장한 이슈만 필터링
-        issues_this_week = [
-            issue
-            for issue in repeat_issues
-            if selected_week in issue.get("weeks", [])
-        ]
-
-        if not issues_this_week:
-            st.info("이번 주에 새로 관찰된 반복 이슈는 없습니다.")
-        else:
-            severity_order = {"high": 0, "medium": 1, "low": 2}
-
-            issues_this_week.sort(
-                key=lambda x: (
-                    severity_order.get(x.get("severity", "low"), 2),
-                    -x.get("count", 0),
-                )
-            )
-            issues_to_show = issues_this_week[:5]
-
-            for issue in issues_to_show:
-                weeks_str = ", ".join(f"Week {w}" for w in issue["weeks"])
-
-                if issue["severity"] == "high":
-                    box = st.error
-                    badge = "🔥 매우 빈번"
-                elif issue["severity"] == "medium":
-                    box = st.warning
-                    badge = "⚠️ 반복 발생"
-                else:
-                    box = st.info
-                    badge = "ℹ️ 관찰 필요"
-
-                with st.container():
-                    box(
-                        f"**{issue['label']}**  \n"
-                        f"- 등급: {badge} (총 {issue['count']}건)  \n"
-                        f"- 발생 주차: {weeks_str}"
-                    )
-                    st.markdown(f"- 요약: {issue['summary']}")
-                    st.markdown(f"- 권장 액션: {issue['action_hint']}")
-                    st.markdown("")
-    else:
-        st.info("반복되는 이슈로 판단되는 패턴이 아직 뚜렷하지 않습니다.")
-
-# =========================================================
-# 탭 3) 상세 데이터 (Week 1 ~ 현재)
-# =========================================================
-with tab_detail:
-    st.markdown(f"### 📂 상세 데이터 — {camp_name} / Week 1 ~ {selected_week}")
-    # -----------------------------
-    # (3) 상세 필터 + 서브 탭
-    # -----------------------------
-    st.markdown("#### 🔍 상세 필터")
-
-    all_categories = ["(전체)"] + sorted(upto_df["category"].unique().tolist())
-    selected_cat = st.selectbox("카테고리", all_categories, index=0)
-
-    severity_options = ["(전체)", "low", "medium", "high"]
-    selected_sev = st.selectbox("심각도", severity_options, index=0)
-
-    all_users = ["(전체)"] + sorted(upto_df["user_id"].unique().astype(str).tolist())
-    selected_user = st.selectbox("작성자(user_id)", all_users, index=0)
-
-    filtered_df = upto_df.copy()
-    if selected_cat != "(전체)":
-        filtered_df = filtered_df[filtered_df["category"] == selected_cat]
-    if selected_sev != "(전체)":
-        filtered_df = filtered_df[filtered_df["severity"] == selected_sev]
-    if selected_user != "(전체)":
-        filtered_df = filtered_df[filtered_df["user_id"] == int(selected_user)]
-
-    st.markdown("---")
-
-    sub_tab_cat, sub_tab_timeline, sub_tab_user = st.tabs(
-        ["📌 카테고리·클러스터", "⏱ 타임라인", "👤 작성자별"]
-    )
-
-    # (3-1) 카테고리·클러스터 상세
-    with sub_tab_cat:
-        st.markdown("### 📌 카테고리·클러스터별 상세")
-
-        if filtered_df.empty:
-            st.info("필터 조건에 해당하는 데이터가 없습니다.")
-        else:
-            cluster_stats = (
-                filtered_df.groupby(["category", "sub_cluster"])
-                .agg(
-                    posts=("text", "count"),
-                    writers=("user_id", lambda x: len(set(x))),
-                    weeks=("week", lambda x: sorted(set(x))),
-                )
-                .reset_index()
-            )
-
-            st.markdown("#### 카테고리/클러스터 집계")
-            st.dataframe(cluster_stats, hide_index=True, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### 클러스터별 글 목록 (표)")
-
-            cluster_stats["label"] = cluster_stats.apply(
-                lambda r: f"{r['category']} – {r['sub_cluster']} ({int(r['posts'])}건 / 작성자 {int(r['writers'])}명)",
-                axis=1,
-            )
-
-            options = ["(전체 보기)"] + cluster_stats["label"].tolist()
-            selected_cluster = st.selectbox(
-                "클러스터 선택",
-                options,
-                index=0,
-                key="cluster_select",
-            )
-
-            detail_df = filtered_df.copy()
-            detail_df = detail_df.sort_values(["category", "sub_cluster", "created_at"])
-
-            detail_df_display = detail_df[
-                [
-                    "week",
-                    "created_at",
-                    "category",
-                    "sub_cluster",
-                    "user_id",
-                    "severity",
-                    "is_toxic",
-                    "summary",
-                    "text",
-                ]
-            ].rename(
-                columns={
-                    "week": "주차",
-                    "created_at": "작성일시",
-                    "category": "카테고리",
-                    "sub_cluster": "세부 이슈",
-                    "user_id": "user_id",
-                    "severity": "심각도",
-                    "is_toxic": "위험글 여부",
-                    "summary": "요약",
-                    "text": "원문",
-                }
-            )
-
-            if selected_cluster != "(전체 보기)":
-                sel_row = cluster_stats[cluster_stats["label"] == selected_cluster].iloc[0]
-                detail_df_display = detail_df_display[
-                    (detail_df_display["카테고리"] == sel_row["category"])
-                    & (detail_df_display["세부 이슈"] == sel_row["sub_cluster"])
-                ]
-
-            st.dataframe(
-                detail_df_display,
-                hide_index=True,
-                use_container_width=True,
-            )
-
-    # (3-2) 타임라인 상세
-    with sub_tab_timeline:
-        st.markdown("### ⏱ Week 1 ~ 현재까지 타임라인 (필터 적용)")
-
-        tl_f_df = filtered_df.copy()
-        if tl_f_df.empty:
-            st.info("필터 조건에 해당하는 데이터가 없습니다.")
-        else:
-            weekly_stats = (
-                tl_f_df.groupby("week")
-                .agg(
-                    posts=("text", "count"),
-                    toxic=("is_toxic", "sum"),
-                )
-                .reset_index()
-            )
-
-            chart = (
-                alt.Chart(weekly_stats)
-                .mark_line(point=True)
-                .encode(
-                    x=alt.X("week:O", title="주차"),
-                    y=alt.Y("posts:Q", title="전체 글 수"),
-                    tooltip=["week", "posts", "toxic"],
-                )
-                .properties(height=260)
-            )
-            st.altair_chart(chart, use_container_width=True)
-
-    # (3-3) 작성자별 상세
-    with sub_tab_user:
-        st.markdown("### 👤 작성자별 글 요약")
-
-        user_stats = (
-            filtered_df.groupby("user_id")
-            .agg(
-                posts=("text", "count"),
-                toxic=("is_toxic", "sum"),
-                high_sev=("severity", lambda x: (x == "high").sum()),
-                first_week=("week", "min"),
-                last_week=("week", "max"),
-            )
-            .reset_index()
-            .sort_values("posts", ascending=False)
-        )
-
-        if user_stats.empty:
-            st.info("필터 조건에 해당하는 데이터가 없습니다.")
-        else:
-            st.dataframe(user_stats, hide_index=True, use_container_width=True)
-
-            st.markdown("---")
-            st.markdown("#### 특정 작성자 선택해서 글 보기")
-
-            user_choices = ["(선택)"] + user_stats["user_id"].astype(str).tolist()
-            selected_user_detail = st.selectbox(
-                "작성자 선택", user_choices, index=0, key="user_detail_select"
-            )
-
-            if selected_user_detail != "(선택)":
-                u_id = int(selected_user_detail)
-                u_df = filtered_df[filtered_df["user_id"] == u_id].sort_values(
-                    "created_at"
-                )
-                st.markdown(f"##### user {u_id}의 글 목록 (Week 1 ~ {selected_week})")
-
-                for _, r in u_df.iterrows():
-                    st.markdown(
-                        f"- **[Week {int(r['week'])}] category={r['category']} / severity={r['severity']} / toxic={r['is_toxic']}**"
-                    )
-                    st.markdown(f"  - {r['summary']}")
-                    st.markdown(f"  - (원문) {r['text']}")
-                    st.markdown("")
-
-                high_sev_cnt = (u_df["severity"] == "high").sum()
-                recent_weeks = sorted(u_df["week"].unique())
-                st.markdown("**자동 상태 코멘트 (데모)**")
-                st.write(
-                    f"- 최근 글 주차: {recent_weeks}  \n"
-                    f"- high severity 글 수: {high_sev_cnt}  \n"
-                    f"→ 최근 몇 주간 같은 유형의 고민이 반복된다면, 1:1 체크인이나 개별 상담을 검토하는 것이 좋습니다."
-                )
+ops_actions = build_ops_actions(current_df)
+if ops_actions:
+    cols = st.columns(len(ops_actions))
+    for idx, action in enumerate(ops_actions):
+        with cols[idx]:
+            with st.container(border=True):
+                st.markdown(f"#### {action['title']}")
+                st.markdown(f"- **대상**: {action['target']}")
+                st.markdown(f"- **근거**: {action['reason']}")
+                st.markdown("**이번 주 실행 액션**")
+                st.markdown(action["todo"])
+else:
+    st.info("이번 주 기준으로 제안할 액션이 없습니다.")

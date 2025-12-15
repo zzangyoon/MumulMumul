@@ -30,7 +30,11 @@ class LoginResponse(BaseModel):
     name: str
     campId: Optional[int] = None
     userType: str
-    tendencyTypeCode: Optional[int] = None
+    tendencyCompleted: bool
+    tendencyTypeCode: Optional[str] = None
+
+class LogoutRequest(BaseModel):
+    userId: int
 
 class SurveyResultRequest(BaseModel):
     # 성향 분석 문항 응답 저장
@@ -76,6 +80,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     db.add(log)
     db.commit()
 
+    print(f"User {user.user_id} logged in at {log.join_at}")
+
     return LoginResponse(
         userId=user.user_id,
         name=user.name,
@@ -85,12 +91,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         tendencyTypeCode=user.tendency_type_code,
     )
 
-# 로그아웃
+
 @router.post("/logout")
-def logout(userId: int, db: Session = Depends(get_db)):
+def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
     """
     로그아웃 처리 + SessionActivityLog 기록 업데이트
     """
+    userId = payload.userId
+
     log: SessionActivityLog | None = (
         db.query(SessionActivityLog)
         .filter(SessionActivityLog.user_id == userId)
@@ -102,7 +110,10 @@ def logout(userId: int, db: Session = Depends(get_db)):
         log.leave_at = datetime.utcnow()
         db.commit()
 
+    print(f"User {userId} logged out at {log.leave_at if log else 'N/A'}")
+
     return {"message": "로그아웃 처리 완료"}
+
 
 import json
 from pathlib import Path
@@ -112,28 +123,48 @@ def load_trait_config(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
+priority_order = ["analyst", "pillar", "balancer", "supporter", "doer"]
 def calculate_personality_type(result, config):
     questions = config["questions"]
 
-    # 1) 총점 계산
-    score = 0
+    persona_scores = {
+        "analyst": 0,
+        "doer": 0,
+        "balancer": 0,
+        "supporter": 0,
+        "pillar": 0,
+    }
+
+    # 1) 기본 점수 누적
     for i, user_choice in enumerate(result):
-        choice_value = questions[i]["choices"][user_choice]["value"]
-        score += choice_value
+        question = questions[i]
+        choice = question["choices"][user_choice]
+        weights = choice.get("personaWeights", {})
+        for persona, w in weights.items():
+            if persona in persona_scores:
+                persona_scores[persona] += w
 
-    # 2) 점수 구간에 따른 캐릭터 매핑
-    if score >= 27:
-        type_code = "analyst"       # 2.6 초과 (27~30)
-    elif score >= 23:
-        type_code = "pillar"        # 2.2 초과 ~ 2.6 이하 (23~26)
-    elif score >= 19:
-        type_code = "balancer"      # 1.8 초과 ~ 2.2 이하 (19~22)
-    elif score >= 15:
-        type_code = "supporter"     # 1.4 초과 ~ 1.8 이하 (15~18)
-    else:
-        type_code = "doer"          # 1.4 이하 (10~14)
+    # 2) 타입별 보정 계수 적용 (analyst 너프, 나머지 살짝 버프)
+    adjust_factors = {
+        "analyst":   0.60,   # 분석가 살짝 너프
+        "doer":      0.65,   # 실행가 살짝 버프
+        "balancer":  0.67,   # 밸런서 약간 버프
+        "supporter": 0.63,   # 협력가 약간 버프
+        "pillar":    0.69    # 원칙주의자 버프
+    }
 
-    return type_code, score
+    for persona, factor in adjust_factors.items():
+        persona_scores[persona] *= factor
+
+    max_score = max(persona_scores.values())
+    candidates = [p for p, s in persona_scores.items() if s == max_score]
+
+    for p in priority_order:
+        if p in candidates:
+            type_code = p
+            break
+
+    return type_code, persona_scores
 
 @router.get("/survey", response_model=dict)
 def get_survey_questions():
@@ -170,9 +201,11 @@ def submit_survey_result(payload: SurveyResultRequest, db: Session = Depends(get
 
     type_code, score = calculate_personality_type(result, personal_survey_config)
 
-    user.tendency_completed = 1
+    # user.tendency_completed = 1
     user.tendency_type_code = type_code
     db.commit()
+
+    print(f"User: {user.user_id}, Type Code: {type_code} Score: {score}")
 
     return SurveyResultResponse(
         userId=user.user_id,

@@ -27,18 +27,17 @@ def seed_dummy_data():
     session.commit()
 
     # 2. camp
-    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6))
-    unreal_camp = Camp(name="언리얼 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6))
-    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6))
+    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
+    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
 
-    session.add_all([test_camp, ai_camp, unreal_camp])
+    session.add_all([test_camp, ai_camp])
     session.commit()
 
     # -----------------------------
-    # 3. 운영진 3명
+    # 3. 운영진 5명
     # -----------------------------
     admins = []
-    for i in range(1, 4):
+    for i in range(1, 5):
         login_id = f"test{i}"
         admins.append(
             User(
@@ -54,73 +53,9 @@ def seed_dummy_data():
     session.commit()
 
     # -----------------------------
-    # 4. 캠프별 강사 2명씩
-    # -----------------------------
-    instructors = []
-
-    # 백엔드 강사
-    for i in range(1, 3):
-        login_id = f"instructor_be{i}"
-        instructors.append(
-            User(
-                login_id=login_id,
-                password_hash=login_id,
-                name=f"AI_강사_{i}",
-                email=f"{login_id}@mumul.com",
-                user_type_id=instructor_type.type_id,
-                camp_id=ai_camp.camp_id,
-            )
-        )
-
-    # 프론트 강사
-    for i in range(1, 3):
-        login_id = f"instructor_fe{i}"
-        instructors.append(
-            User(
-                login_id=login_id,
-                password_hash=login_id,
-                name=f"언리얼_강사_{i}",
-                email=f"{login_id}@mumul.com",
-                user_type_id=instructor_type.type_id,
-                camp_id=unreal_camp.camp_id,
-            )
-        )
-
-    session.add_all(instructors)
-    session.commit()
-
-    # -----------------------------
-    # 5. 학생 100명씩
+    # 5. 학생 200명
     # -----------------------------
     students = []
-
-    # 캠프 학생
-    for i in range(1, 101):
-        login_id = f"ai_student{i}"
-        students.append(
-            User(
-                login_id=login_id,
-                password_hash=login_id,
-                name=f"AI_학생_{i}",
-                email=f"{login_id}@mumul.com",
-                user_type_id=student_type.type_id,
-                camp_id=ai_camp.camp_id,
-            )
-        )
-
-    # 프론트 캠프 학생
-    for i in range(1, 101):
-        login_id = f"ur_student{i}"
-        students.append(
-            User(
-                login_id=login_id,
-                password_hash=login_id,
-                name=f"언리얼_학생_{i}",
-                email=f"{login_id}@mumul.com",
-                user_type_id=student_type.type_id,
-                camp_id=unreal_camp.camp_id,
-            )
-        )
 
     # 테스트 캠프 학생
     login_ids = ["user1", "user2", "user3", "user4", "user5"]
@@ -138,6 +73,33 @@ def seed_dummy_data():
                 )
         ]
         students.extend(test_user)
+    
+    for i in range(1, 11):
+        login_id = f"user{i+10}"
+        students.append(
+            User(
+                login_id=login_id,
+                password_hash=login_id,
+                name=f"테스트_학생_{i}",
+                email=f"{login_id}@mumul.com",
+                user_type_id=student_type.type_id,
+                camp_id=ai_camp.camp_id,
+            )
+        )
+
+    # 캠프 학생
+    for i in range(1, 201):
+        login_id = f"ai_student{i}"
+        students.append(
+            User(
+                login_id=login_id,
+                password_hash=login_id,
+                name=f"AI_학생_{i}",
+                email=f"{login_id}@mumul.com",
+                user_type_id=student_type.type_id,
+                camp_id=ai_camp.camp_id,
+            )
+        )
 
     session.add_all(students)
     session.commit()

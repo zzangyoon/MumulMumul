@@ -70,3 +70,5 @@ settings = Settings()
 CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[1]
 PERSONAL_SURVEY_CONFIG_PATH = ROOT_DIR / "storage/personal_survey.json"
+
+WEEK_INDEX = 1 # 1주차
