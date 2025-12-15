@@ -212,6 +212,7 @@ def post_team_chat_message(
 
     doc = {
         "roomId": teamChatId,
+        "type": "team",
         "userId": payload.userId,
         "userName": user.name,
         "message": payload.message,
