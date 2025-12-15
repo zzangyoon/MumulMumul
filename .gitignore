@@ -2,5 +2,8 @@
 .env
 __pycache__/
 
+# DB
+storage/mumul.db
+
 # 음성 chunk 파일
 storage/meetings/
