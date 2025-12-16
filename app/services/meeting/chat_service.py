@@ -44,28 +44,33 @@ class ChatService:
             start_iso = format_datetime(start_dt, "%Y-%m-%dT%H:%M:%S.%f")
             end_iso = format_datetime(end_dt, "%Y-%m-%dT%H:%M:%S.%f")
 
+            logger.info(
+                f"start_iso ::: {start_iso}\n"
+                f"end_iso ::: {end_iso}\n"
+            )
+
             # MongoDB 쿼리
             messages = self.collection.find({
-                "room_id" : room_id,
+                "roomId" : room_id,
                 "type" : "team",
-                "created_at" : {
+                "createdAt" : {
                     "$gte" : start_iso,
                     "$lte" : end_iso
                 }
-            }).sort("created_at", 1)    # 시간순 정렬
+            }).sort("createdAt", 1)    # 시간순 정렬
 
             # 리스트 변환
             result = []
             for msg in messages:
                 # created_at을 timestamp로 변환
-                created_at = datetime.fromisoformat(msg["created_at"])
+                created_at = datetime.fromisoformat(msg["createdAt"])
                 created_timestamp = int(created_at.timestamp() * 1000)
 
                 result.append({
-                    "user_id" : msg["user_id"],
-                    "user_name" : msg["user_name"],
+                    "user_id" : msg["userId"],
+                    "user_name" : msg["userName"],
                     "message" : msg["message"],
-                    "created_at" : msg["created_at"],
+                    "created_at" : msg["createdAt"],
                     "timestamp_ms" : created_timestamp
                 })
             logger.info(f"채팅 메시지 {len(result)}개 조회 완료")
