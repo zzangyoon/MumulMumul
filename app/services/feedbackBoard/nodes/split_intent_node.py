@@ -70,20 +70,22 @@ def split_intent_node(state: FeedbackBoardState) -> FeedbackBoardState:
             if seg == clean_text:
                 continue
 
+            base = (analysis.model_copy(deep=True) if analysis else FeedbackBoardInsight())
+
+            base.clean_text = seg
+            base.parent_post_id = post.post_id
+            base.is_split_child = True
+            base.split_index = idx
+            base.is_active = True
+            base.inactive_reasons = []
+            
             child = FeedbackBoardPost(
-                id=f"{post.id}_split_{idx}",
+                post_id=f"{post.post_id}_split_{idx}",
                 camp_id=post.camp_id,
                 author_id=post.author_id,
                 raw_text=seg,
                 created_at=post.created_at,
-                ai_analysis=FeedbackBoardInsight(
-                    clean_text=seg,
-                    parent_post_id=post.id,
-                    is_split_child=True,
-                    split_index=idx,
-                    is_active=True,
-                    analyzer_version=analysis.analyzer_version,
-                ),
+                ai_analysis=base,
             )
             new_posts.append(child)
 
@@ -95,7 +97,7 @@ if __name__ == "__main__":
     from app.services.feedbackBoard.io_contract import PipelineInput, RunConfig
 
     post = FeedbackBoardPost(
-        id="p1",
+        post_id="p1",
         camp_id=1,
         author_id=101,
         raw_text="팀장이 의견을 안 들어요. 그리고 공지 채널도 너무 복잡해요.",
@@ -122,8 +124,8 @@ if __name__ == "__main__":
 
     # ---- asserts ----
     assert len(out.posts) >= 2
-    parents = [p for p in out.posts if p.id == "p1"]
-    children = [p for p in out.posts if p.id.startswith("p1_split")]
+    parents = [p for p in out.posts if p.post_id == "p1"]
+    children = [p for p in out.posts if p.post_id.startswith("p1_split")]
 
     assert len(parents) == 1
     assert len(children) >= 1

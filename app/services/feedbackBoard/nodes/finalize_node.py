@@ -22,9 +22,10 @@ from app.services.feedbackBoard.schemas import (
     WeeklyContextSnapshot,
 )
 from app.services.db_service.feedback_reports import upsert_weekly_report
+from app.services.feedbackBoard.schemas import FeedbackBoardPost
 
 
-def _post_to_row(post) -> Dict[str, Any]:
+def _post_to_row(post) -> FeedbackBoardPost:
     """
     프론트가 기대하는 rows 형태로 변환.
     - 원문(raw_text) 대신 clean_text 우선
@@ -33,29 +34,14 @@ def _post_to_row(post) -> Dict[str, Any]:
     a = post.ai_analysis
     text = (a.clean_text if (a and a.clean_text) else post.raw_text) if post.raw_text else ""
 
-    return {
-        "camp_id": post.camp_id,
-        "week": None,
-        "created_at": post.created_at,
-        "category": a.category if a else None,
-        "sub_cluster": a.sub_category if a else None,
-        "type": a.post_type if a else None,
-        "is_toxic": a.is_toxic if a else None,
-        "severity": a.severity if a else None,
-        "user_id": post.author_id,
-        "text": text,
-        "summary": a.summary if a else None,
-
-        # 디버깅/운영에 유용(프론트에서 숨겨도 됨)
-        "is_active": a.is_active if a else True,
-        "inactive_reasons": a.inactive_reasons if a else [],
-        "duplicate_group_id": a.duplicate_group_id if a else None,
-        "is_group_representative": a.is_group_representative if a else None,
-        "parent_post_id": a.parent_post_id if a else None,
-        "is_split_child": a.is_split_child if a else None,
-        "split_index": a.split_index if a else None,
-        "action_type": a.action_type if a else None,
-    }
+    return FeedbackBoardPost(
+        post_id=post.post_id,
+        camp_id=post.camp_id,
+        author_id=post.author_id,
+        raw_text=text,
+        created_at=post.created_at,
+        ai_analysis=post.ai_analysis,
+    )
 
 
 def _build_weekly_stats(state: FeedbackBoardState) -> WeeklyStats:
@@ -127,11 +113,9 @@ def finalize_node(state: FeedbackBoardState) -> FeedbackBoardState:
             filtered_posts.append(post)
 
     rows: List[Dict[str, Any]] = [_post_to_row(p) for p in filtered_posts]
-    for r in rows:
-        r["week"] = week
 
     # 2) stats
-    stats_model = _build_weekly_stats(state)
+    stats_model: WeeklyStats = _build_weekly_stats(state)
 
     # 워드클라우드 키워드 집계
     wc_keywords: List[str] = []
@@ -189,9 +173,11 @@ def finalize_node(state: FeedbackBoardState) -> FeedbackBoardState:
     # source_post_ids (대표/active만 저장 권장)
     source_post_ids = []
     for post in filtered_posts:
-        source_post_ids.append(str(post.id))
+        source_post_ids.append(str(post.post_id))
 
     report = FeedbackWeeklyReport(
+        # is_active 가 true인 글만
+        logs = final.logs,
         camp_id=camp_id,
         week=week,
         analyzer_version=analyzer_version,
@@ -264,7 +250,7 @@ if __name__ == "__main__":
     # 3) posts 더미(대표/active만 프론트 rows로 나가도록 구성)
     state.posts = [
         FeedbackBoardPost(
-            id="p1",
+            post_id="p1",
             camp_id=1,
             author_id=101,
             raw_text="팀 역할이 애매해서 제가 혼자 맡는 일이 많은 것 같아요.",
@@ -286,7 +272,7 @@ if __name__ == "__main__":
             ),
         ),
         FeedbackBoardPost(
-            id="p2",
+            post_id="p2",
             camp_id=1,
             author_id=101,
             raw_text="(중복) 팀 역할이 애매해서...",
@@ -310,7 +296,7 @@ if __name__ == "__main__":
             ),
         ),
         FeedbackBoardPost(
-            id="p3",
+            post_id="p3",
             camp_id=1,
             author_id=102,
             raw_text="팀장님이 의견을 잘 안 듣고 자기 스타일대로만 정해서 답답합니다.",
@@ -333,7 +319,7 @@ if __name__ == "__main__":
             ),
         ),
         FeedbackBoardPost(
-            id="p4",
+            post_id="p4",
             camp_id=1,
             author_id=103,
             raw_text="ㅋㅋㅋㅋ",
@@ -449,5 +435,7 @@ if __name__ == "__main__":
 
     # wordcloud_keywords는 리스트만 전달(이미지 없음)
     assert isinstance(out.final.wordcloud_keywords, list), "wordcloud_keywords는 list여야 함"
+
+    print(out.final)
 
     print("✅ finalize_node test passed")

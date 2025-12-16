@@ -1,154 +1,107 @@
-# app/services/feedbackBoard/nodes/normalize_filter_node.py
-import sys
-from pathlib import Path
+from __future__ import annotations
 
-# 이 파일 기준으로 프로젝트 루트 계산
-CURRENT_FILE = Path(__file__).resolve()
-ROOT_DIR = CURRENT_FILE.parents[4]   # .../MumulMumul
-sys.path.append(str(ROOT_DIR))
-
-import re
 from datetime import datetime
-from typing import List, Optional
+import re
 
-from app.services.feedbackBoard.schemas import FeedbackBoardPost, FeedbackBoardInsight
 from app.services.feedbackBoard.io_contract import FeedbackBoardState
+from app.services.feedbackBoard.schemas import FeedbackBoardInsight
 
 
 def normalize_filter_node(state: FeedbackBoardState) -> FeedbackBoardState:
-    """
-    1) raw_text -> clean_text 정제
-    2) 의미 없는 글 inactive 처리
-    3) 욕설/강한 표현 순화(마스킹)
-    """
-    if not state.posts:
-        state.warnings.append("normalize_filter_node: state.posts is empty")
-        return state
+    cfg = state.input.config
 
-    # --- 매우 단순 룰(초기 버전): 추후 운영 정책에 맞게 확장 ---
-    meaningless_patterns = [
-        r"^\s*$",
-        r"^(ㅇ|ㅇㅇ|ㄴㄴ|ㄱㄱ|ㅎㅎ|ㅋㅋ|ㅠㅠ|ㅜㅜ|좋아요|감사|감사합니다|ㄳ|ㄳㄳ)\s*$",
-        r"^(test|테스트)\s*$",
-        r"^(\.|,|!|\?)+\s*$",
+    # ---- 룰 세트 (추후 cfg로 뺄 수 있지만 지금은 노드 안에 둠) ----
+    # 욕설/공격 표현(토식 판정용)
+    TOXIC_WORDS = [
+        "씨발", "시발", "좆", "병신", "미친", "개새", "꺼져", "죽어", "븅", "ㅅㅂ",
     ]
 
-    # 욕설/강한 표현 마스킹(더미)
-    # 운영 시: 욕설 사전/모델로 교체 가능
-    profanity_words = [
-        "씨발", "시발", "ㅅㅂ", "ㅆㅂ", "병신", "ㅂㅅ", "개새끼", "새끼", "좆", "존나",
+    # “강제 high” 신호 (운영진이 반드시 봐야 하는 것들)
+    FORCE_HIGH_PATTERNS = [
+        r"자해", r"죽고\s*싶", r"죽어\s*버리", r"극단적\s*선택",
+        r"폭행", r"살해", r"죽이", r"협박",
+        r"중도\s*포기", r"그만\s*둘", r"퇴소", r"환불",
     ]
 
-    # 특정 인물 지목 공격(더미 룰): "@홍길동", "OO가", "그 강사" 등은 여기서는 그냥 유지
-    # (리스크/토식은 risk_scoring_node에서)
+    # 의미 없는 글(최소 룰)
+    MEANINGLESS_PATTERNS = [
+        r"^[ㅋㅎㅠㅜ]+$",          # ㅋㅋㅋ / ㅠㅠㅠ 등
+        r"^\s*$",                  # 공백
+        r"^ㅇㅋ$|^ㅇㅇ$|^ㄱㅅ$",     # 매우 짧은 반응
+    ]
 
+    def _is_meaningless(text: str) -> bool:
+        t = (text or "").strip()
+        if len(t) <= 1:
+            return True
+        for pat in MEANINGLESS_PATTERNS:
+            if re.match(pat, t):
+                return True
+        return False
+
+    def _clean_text(text: str) -> str:
+        t = (text or "").strip()
+        # 기본 정리
+        t = re.sub(r"\s+", " ", t)
+        # 욕설 마스킹
+        for w in TOXIC_WORDS:
+            t = t.replace(w, "*" * len(w))
+        return t
+
+    def _toxicity_score(raw: str) -> float:
+        raw = raw or ""
+        hits = sum(1 for w in TOXIC_WORDS if w in raw)
+        # 간단 스케일링: 0, 0.33, 0.66, 1.0
+        return min(1.0, hits / 3.0)
+
+    def _has_force_high(raw: str) -> bool:
+        raw = raw or ""
+        for pat in FORCE_HIGH_PATTERNS:
+            if re.search(pat, raw):
+                return True
+        return False
+
+    # ---- main ----
+    new_posts = []
     for p in state.posts:
         if p.ai_analysis is None:
             p.ai_analysis = FeedbackBoardInsight()
 
-        raw = (p.raw_text or "").strip()
+        raw = p.raw_text or ""
 
-        # 1) 기본 정규화
-        clean = raw
-        clean = clean.replace("\u200b", " ")               # zero-width
-        clean = re.sub(r"\s+", " ", clean).strip()        # multi-space -> single
+        # (1) clean_text
+        p.ai_analysis.clean_text = _clean_text(raw)
 
-        # 2) 욕설 제거
-        for w in profanity_words:
-            if w in clean:
-                clean = clean.replace(w, "")
-
-        # 3) 의미 없는 글 판단
-        inactive_reasons: List[str] = []
-        is_meaningless = False
-        for pat in meaningless_patterns:
-            if re.match(pat, clean, flags=re.IGNORECASE):
-                is_meaningless = True
-                break
-
-        # 너무 짧은 글(예: 3자 이하)은 의미 없음 처리(초기 룰)
-        if len(clean) <= 3:
-            is_meaningless = True
-
-        if is_meaningless:
-            inactive_reasons.append("meaningless")
-
-        # 4) 적용
-        p.ai_analysis.clean_text = clean if clean else None
-        p.ai_analysis.analyzed_at = datetime.utcnow()
-        p.ai_analysis.analyzer_version = state.input.config.analyzer_version
-
-        if inactive_reasons:
+        # (2) meaningless → inactive
+        if _is_meaningless(p.ai_analysis.clean_text):
             p.ai_analysis.is_active = False
-            # 기존 이유 유지 + 중복 제거
-            merged = list(dict.fromkeys((p.ai_analysis.inactive_reasons or []) + inactive_reasons))
-            p.ai_analysis.inactive_reasons = merged
+            if "meaningless" not in p.ai_analysis.inactive_reasons:
+                p.ai_analysis.inactive_reasons.append("meaningless")
         else:
-            # 의미 있으면 활성
             p.ai_analysis.is_active = True
-            p.ai_analysis.inactive_reasons = p.ai_analysis.inactive_reasons or []
 
+        # (3) risk scoring 동시 수행 (원문 raw 기준)
+        # - split 이후 clean_text에서 욕설이 사라져도 “원문에 있었던 위험 신호”는 남김
+        score = _toxicity_score(raw)
+        p.ai_analysis.toxicity_score = score
+        p.ai_analysis.is_toxic = score > 0.0
+
+        # severity: 강제 high > toxic high > 기본 low
+        # (필요하면 "중도포기/환불" 같은 것만 medium으로 내리는 룰로 세분화 가능)
+        if _has_force_high(raw):
+            p.ai_analysis.severity = "high"
+        elif p.ai_analysis.is_toxic:
+            p.ai_analysis.severity = "high"
+        else:
+            # 의미 있는 글이면 medium/low를 좀 더 구분할 수도 있지만,
+            # 지금은 간단히 low로 둠 (이후 risk 정책 확장 가능)
+            p.ai_analysis.severity = "low"
+
+        # (4) meta
+        p.ai_analysis.analyzed_at = datetime.utcnow()
+        p.ai_analysis.analyzer_version = cfg.analyzer_version
+
+        new_posts.append(p)
+
+    state.posts = new_posts
     return state
-
-
-# -------------------------
-# 단독 실행 테스트
-# -------------------------
-if __name__ == "__main__":
-    from app.services.feedbackBoard.io_contract import PipelineInput, RunConfig
-
-    dummy_posts = [
-        FeedbackBoardPost(
-            id="p1",
-            camp_id=1,
-            author_id=101,
-            raw_text="  씨발  팀장이 의견을 안 들어요...   ",
-            created_at=datetime(2025, 11, 6, 21, 0),
-            ai_analysis=None,
-        ),
-        FeedbackBoardPost(
-            id="p2",
-            camp_id=1,
-            author_id=102,
-            raw_text="ㅇㅇ",
-            created_at=datetime(2025, 11, 6, 21, 5),
-            ai_analysis=None,
-        ),
-        FeedbackBoardPost(
-            id="p3",
-            camp_id=1,
-            author_id=103,
-            raw_text="공지 채널이 디스코드/노션으로 나뉘어서 헷갈려요",
-            created_at=datetime(2025, 11, 6, 21, 10),
-            ai_analysis=None,
-        ),
-    ]
-
-    state = FeedbackBoardState(
-        input=PipelineInput(config=RunConfig(camp_id=1, week=1, analyzer_version="fb_v1")),
-        raw_posts=[],
-        posts=dummy_posts,
-        weekly_context=None,
-        weekly_report=None,
-        final=None,
-        warnings=[],
-        errors=[],
-    )
-
-    out = normalize_filter_node(state)
-
-    # ---- asserts ----
-    assert len(out.posts) == 3
-    assert out.posts[0].ai_analysis is not None
-    assert out.posts[0].ai_analysis.clean_text is not None
-    assert "" in out.posts[0].ai_analysis.clean_text  # 욕설 마스킹 됨
-
-    assert out.posts[1].ai_analysis.is_active is False
-    assert "meaningless" in out.posts[1].ai_analysis.inactive_reasons
-
-    assert out.posts[2].ai_analysis.is_active is True
-    assert out.posts[2].ai_analysis.clean_text is not None
-
-    for p in out.posts:
-        print(p.ai_analysis)
-    print("✅ normalize_filter_node standalone test passed")

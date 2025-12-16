@@ -13,7 +13,6 @@ report_col = mongo_db["feedback_weekly_reports"]
 def upsert_weekly_report(report: FeedbackWeeklyReport) -> FeedbackWeeklyReport:
     """
     (camp_id, week, analyzer_version) 기준으로 upsert 저장.
-    동일 키가 있으면 덮어쓰고, 없으면 생성.
     """
     key = {
         "camp_id": report.camp_id,
@@ -23,11 +22,15 @@ def upsert_weekly_report(report: FeedbackWeeklyReport) -> FeedbackWeeklyReport:
 
     doc = report.model_dump(by_alias=True)
 
-    report_col.update_one(
-        key,
-        {"$set": doc},
-        upsert=True,
-    )
+    # 동일 key가 있으면 업데이트
+    if report_col.count_documents(key) > 0:
+        report_col.replace_one(
+            key,
+            doc,
+            upsert=True,
+        )
+    else:
+        report_col.insert_one(doc)
 
     saved = report_col.find_one(key)
     return FeedbackWeeklyReport(**saved)

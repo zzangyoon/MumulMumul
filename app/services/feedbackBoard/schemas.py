@@ -1,6 +1,7 @@
 # app/services/feedbackBoard/schemas.py
 from datetime import datetime
 from typing import List, Literal, Optional, Dict, Any
+from bson import ObjectId
 from pydantic import BaseModel, Field
 from app.core.mongodb import register_mongo_model
 
@@ -43,7 +44,7 @@ class FeedbackBoardInsight(BaseModel):
     analyzer_version: Optional[str] = None
 
 class FeedbackBoardPost(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
+    post_id: Optional[str] = None
     camp_id: int
     author_id: Optional[int] = None
     raw_text: str
@@ -139,6 +140,8 @@ class FeedbackWeeklyReport(BaseModel):
 
     # 선택: weekly_report_node 입력 컨텍스트 스냅샷(디버깅/감사)
     context_snapshot: Optional[WeeklyContextSnapshot] = None
+
+    logs: List[FeedbackBoardPost] = Field(default_factory=list)
 
 # =====================================
 # MongoDB 모델 등록

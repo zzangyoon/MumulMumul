@@ -24,7 +24,7 @@ def add_feedback_post(db: Session, user_id: int, raw_text: str) -> FeedbackBoard
         created_at=datetime.utcnow(),
     )
     result = feedback_col.insert_one(new_post.model_dump())
-    new_post.id = result.inserted_id
+    new_post.post_id = result.inserted_id
     return new_post
 
 # 일정 기간의 피드백 게시글을 가져오는 함수
@@ -40,5 +40,16 @@ def get_feedback_posts_by_date_range(camp_id: id, start_date: datetime, end_date
         }
     }
     posts_cursor = feedback_col.find(query)
-    posts = [FeedbackBoardPost(**post) for post in posts_cursor]
+    print(posts_cursor)
+    posts = []
+    for post in posts_cursor:
+        print(post)
+        posts.append(FeedbackBoardPost(
+            post_id=str(post.get("_id")),
+            camp_id=post.get("camp_id"),
+            author_id=post.get("author_id"),
+            raw_text=post.get("content"),
+            created_at=post.get("created_at"),
+            ai_analysis=post.get("ai_analysis"),
+        ))
     return posts

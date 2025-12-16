@@ -11,10 +11,10 @@ from app.core.db import get_db
 from app.core.mongodb import get_mongo_db
 
 from app.core.schemas import User, ChatRoom, ChatRoomUser
+from app.core.timezone import datetime_to_custom_str, datetime_to_iso_milliseconds
 
 mongo_db = get_mongo_db()
 collection = mongo_db["team_chat_messages"]
-
 
 # ====================================
 #  Pydantic Schemas
@@ -37,6 +37,7 @@ class ChatMessageResponse(BaseModel):
     userName: str
     message: str
     createdAt: str  # ISO8601 문자열
+    formattedCreatedAt: str = None  # "2025년 12월 31일 오후 11:59" 형식
 
 
 class ChatMessageCreate(BaseModel):
@@ -164,9 +165,10 @@ def get_team_chat_messages(
                 userId=doc["userId"],
                 userName=doc.get("userName", ""),
                 message=doc["message"],
-                createdAt=doc["createdAt"],
-            )
-        )
+                createdAt=datetime_to_iso_milliseconds(doc["createdAt"]),
+                formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
+            ))
+        
 
     return results
 
@@ -216,7 +218,7 @@ def post_team_chat_message(
         "userId": payload.userId,
         "userName": user.name,
         "message": payload.message,
-        "createdAt": datetime.utcnow().isoformat()
+        "createdAt": datetime.now()
     }
 
     result = collection.insert_one(doc)
@@ -227,6 +229,7 @@ def post_team_chat_message(
         userName=user.name,
         message=payload.message,
         createdAt=payload.createdAt,
+        formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
     )
 
 

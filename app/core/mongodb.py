@@ -1,6 +1,6 @@
 # app/core/mongodb.py
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Literal, Optional, List, Tuple, Type, Dict, Any
 
 from bson import ObjectId
@@ -13,7 +13,7 @@ from app.services.curriculum.schemas import CurriculumAIInsights, CurriculumChar
 # =====================================
 # 1. MongoDB 연결
 # =====================================
-mongo_client = MongoClient(MONGO_URL)
+mongo_client = MongoClient(MONGO_URL, tz_aware=True, tzinfo=timezone.utc)
 mongo_db = mongo_client[MONGO_DB_NAME]
 
 def get_mongo_db() -> MongoClient:

@@ -5,7 +5,7 @@ from typing import Optional, Literal, List, Dict, Any, Tuple
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from app.services.feedbackBoard.schemas import FeedbackBoardPost
+from app.services.feedbackBoard.schemas import FeedbackBoardPost, WeeklyStats
 
 
 # ----------------------------
@@ -237,8 +237,6 @@ class WeeklyReport(BaseModel):
             "이번 주 주요 이슈 Top 3 목록. "
             "'요청 수 + 운영 중요도 + 위험도 가중치'를 종합하여 선정한다."
         ),
-        min_items=3,
-        max_items=3,
     )
 
     ops_actions: List[OpsAction] = Field(
@@ -248,13 +246,11 @@ class WeeklyReport(BaseModel):
             "보통 Top 3 수준으로 생성되며, "
             "각 액션은 서로 다른 action_type을 가질 수 있다."
         ),
-        min_items=3,
-        max_items=3,
     )
 
 
 class FinalizePayload(BaseModel):
-    logs: List[Dict[str, Any]] = Field(
+    logs: List[FeedbackBoardPost] = Field(
         ...,
         description=(
             "프론트엔드에 전달되는 최종 로그 데이터. "
@@ -278,7 +274,7 @@ class FinalizePayload(BaseModel):
         description="WeeklyReport.ops_actions를 그대로 프론트로 전달한 데이터.",
     )
 
-    stats: Dict[str, Any] = Field(
+    stats: WeeklyStats = Field(
         ...,
         description=(
             "위험/주의/보통 분포, 부정글 비율, 카테고리별 집계 등 "

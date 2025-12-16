@@ -2,9 +2,8 @@
 import sys
 from pathlib import Path
 
-# 이 파일 기준으로 프로젝트 루트 계산
 CURRENT_FILE = Path(__file__).resolve()
-ROOT_DIR = CURRENT_FILE.parents[4]   # .../MumulMumul
+ROOT_DIR = CURRENT_FILE.parents[4]  # .../MumulMumul
 sys.path.append(str(ROOT_DIR))
 
 import json
@@ -14,8 +13,8 @@ from pydantic import BaseModel, Field
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.runnables import Runnable
 
-# 실제 프로젝트 경로에 맞춰 import 조정
 from app.services.feedbackBoard.io_contract import (
     FeedbackBoardState,
     WeeklyReport,
@@ -24,50 +23,66 @@ from app.services.feedbackBoard.io_contract import (
 )
 
 
-# -----------------------------
-# LLM 전용 초소형 출력 모델
-# -----------------------------
 class WeeklyReportLLMOut(BaseModel):
     week_summary: str = Field(
         ...,
         description=(
             "이번 주 전체 분위기/핵심 흐름을 운영진이 빠르게 이해할 수 있게 2~4문장으로 요약. "
-            "숫자/정답 데이터(건수/분류)는 입력에 있는 것을 참고만 하고, 과장하지 말 것."
+            "입력에 없는 사실/숫자/분류를 절대 만들지 말 것."
         ),
     )
     key_topic_summaries: List[str] = Field(
         default_factory=list,
         description=(
-            "Top3 key topic 후보 각각에 대한 요약 문장 리스트. "
-            "입력의 후보 순서와 동일한 순서로 작성. 각 항목 2~3문장."
+            "Top key topic 후보 각각에 대한 요약 문장 리스트. "
+            "입력 후보 순서와 동일한 순서로 작성. 각 항목 2~3문장."
         ),
     )
     ops_action_todos: List[str] = Field(
         default_factory=list,
         description=(
             "운영 개입 가이드 후보 각각에 대한 실행 To-do 문장 리스트. "
-            "입력 후보 순서와 동일한 순서로 작성. 각 항목은 구체적 행동 중심으로 2~4문장."
+            "입력 후보 순서와 동일한 순서로 작성. 각 항목 2~4문장."
         ),
     )
 
 
-def weekly_report_node(state: FeedbackBoardState, llm) -> FeedbackBoardState:
+def weekly_report_node(state: FeedbackBoardState, llm: Runnable) -> FeedbackBoardState:
     """
-    - 입력: state.weekly_context (이미 Top3 후보/ops 후보 계산 완료 상태)
-    - 처리: LLM 1회 호출로 week_summary + (Top3 summary 문장) + (ops todo 문장)만 생성
+    - 입력: state.weekly_context (key_topic_candidates / ops_action_candidates 포함)
+    - 처리: LLM 1회 호출로 '문장'만 생성
     - 출력: state.weekly_report (정답 데이터는 후보에서 복사하여 서버가 조립)
     """
-    weekly_context = state.weekly_context
-    if weekly_context is None:
+    wc = state.weekly_context
+    if wc is None:
         state.errors.append("weekly_report_node: weekly_context is None")
         return state
 
-    # 후보가 없으면 LLM 호출 자체를 스킵하고 최소 리포트 생성
-    key_cands = weekly_context.key_topic_candidates or []
-    ops_cands = weekly_context.ops_action_candidates or []
+    key_cands = getattr(wc, "key_topic_candidates", None) or []
+    ops_cands = getattr(wc, "ops_action_candidates", None) or []
+
+    # 후보가 없으면 스킵
+    if (len(key_cands) == 0) and (len(ops_cands) == 0):
+        state.weekly_report = WeeklyReport(
+            week_summary="이번 주 리포트를 생성할 후보 데이터가 없습니다.",
+            key_topics=[],
+            ops_actions=[],
+        )
+        return state
 
     parser = PydanticOutputParser(pydantic_object=WeeklyReportLLMOut)
     format_instructions = parser.get_format_instructions()
+
+    # LLM에 넘길 payload (사실 데이터는 최소/정제해서)
+    risk_payload = {
+        "total": wc.risk.total,
+        "toxic_count": wc.risk.toxic_count,
+        "severity_count": wc.risk.severity_count,
+        "danger_count": wc.risk.danger_count,
+        "warning_count": wc.risk.warning_count,
+        "normal_count": wc.risk.normal_count,
+        "action_type_count": wc.action_type_count,
+    }
 
     key_cands_payload = [
         {
@@ -93,24 +108,13 @@ def weekly_report_node(state: FeedbackBoardState, llm) -> FeedbackBoardState:
         for a in ops_cands
     ]
 
-    # risk 요약도 "숫자만" 전달
-    risk_payload = {
-        "total": weekly_context.risk.total,
-        "toxic_count": weekly_context.risk.toxic_count,
-        "severity_count": weekly_context.risk.severity_count,
-        "danger_count": weekly_context.risk.danger_count,
-        "warning_count": weekly_context.risk.warning_count,
-        "normal_count": weekly_context.risk.normal_count,
-        "action_type_count": weekly_context.action_type_count,
-    }
-
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 (
                     "너는 부트캠프 운영진을 위한 '익명 게시판(속닥숲) 주간 리포트' 작성 AI다.\n"
-                    "- 반드시 입력에 있는 후보/수치만 참고한다.\n"
+                    "- 입력에 있는 후보/수치만 참고한다.\n"
                     "- 절대 새로운 사실/숫자/분류를 만들어내지 않는다.\n"
                     "- 문장만 자연스럽게 작성한다(정리/표현/구체화).\n"
                     "- 출력은 JSON 하나만. 추가 텍스트 금지.\n\n"
@@ -122,8 +126,8 @@ def weekly_report_node(state: FeedbackBoardState, llm) -> FeedbackBoardState:
                 (
                     "다음은 이번 주 집계된 컨텍스트다.\n\n"
                     "1) 위험/지표 요약(risk):\n{risk_json}\n\n"
-                    "2) Top3 후보(key_topic_candidates) - 이미 선정된 순서 그대로 요약 문장만 작성:\n{key_candidates_json}\n\n"
-                    "3) 운영 액션 후보(ops_action_candidates) - action_type은 이미 결정됨. todo 문장만 구체화:\n{ops_candidates_json}\n\n"
+                    "2) key_topic_candidates (이미 정렬/선정된 순서 그대로, '요약 문장'만 작성):\n{key_candidates_json}\n\n"
+                    "3) ops_action_candidates (action_type은 이미 결정됨. 'todo 문장'만 구체화):\n{ops_candidates_json}\n\n"
                     "요구사항:\n"
                     "- week_summary: 2~4문장\n"
                     "- key_topic_summaries: 후보 개수만큼(순서 유지)\n"
@@ -148,54 +152,50 @@ def weekly_report_node(state: FeedbackBoardState, llm) -> FeedbackBoardState:
         state.errors.append(f"weekly_report_node: LLM parse/invoke failed: {e}")
         return state
 
-    # -----------------------------
-    # 서버가 WeeklyReport 조립
-    # -----------------------------
-    kt_summ = llm_out.key_topic_summaries or []
-    oa_todos = llm_out.ops_action_todos or []
-
-    if len(kt_summ) != len(key_cands):
-        state.warnings.append(
-            f"weekly_report_node: key_topic_summaries length mismatch "
-            f"(expected={len(key_cands)}, got={len(kt_summ)}). Will pad/truncate."
-        )
-    if len(oa_todos) != len(ops_cands):
-        state.warnings.append(
-            f"weekly_report_node: ops_action_todos length mismatch "
-            f"(expected={len(ops_cands)}, got={len(oa_todos)}). Will pad/truncate."
-        )
-
-    # pad/truncate
+    # 길이 mismatch 방어
     def _fit(lst: List[str], n: int) -> List[str]:
-        lst = lst[:n]
+        lst = (lst or [])[:n]
         while len(lst) < n:
-            lst.append("")  # 비어있으면 빈 문장
+            lst.append("")
         return lst
 
-    kt_summ = _fit(kt_summ, len(key_cands))
-    oa_todos = _fit(oa_todos, len(ops_cands))
+    kt_summ = _fit(llm_out.key_topic_summaries, len(key_cands))
+    oa_todos = _fit(llm_out.ops_action_todos, len(ops_cands))
 
+    if len(llm_out.key_topic_summaries or []) != len(key_cands):
+        state.warnings.append(
+            f"weekly_report_node: key_topic_summaries length mismatch "
+            f"(expected={len(key_cands)}, got={len(llm_out.key_topic_summaries or [])})"
+        )
+    if len(llm_out.ops_action_todos or []) != len(ops_cands):
+        state.warnings.append(
+            f"weekly_report_node: ops_action_todos length mismatch "
+            f"(expected={len(ops_cands)}, got={len(llm_out.ops_action_todos or [])})"
+        )
+
+    # 서버가 WeeklyReport 조립 (정답 데이터는 후보에서 그대로 복사)
     key_topics: List[KeyTopic] = []
-    for i, key_topic in enumerate(key_cands):
+    for i, c in enumerate(key_cands):
         key_topics.append(
             KeyTopic(
-                category=key_topic.category,
-                count=key_topic.count,
+                category=c.category,
+                count=c.count,
                 summary=kt_summ[i],
-                post_ids=key_topic.post_ids,
-                texts=key_topic.excerpts or [],
+                post_ids=c.post_ids,
+                # texts는 운영진 확인용 excerpt
+                texts=c.excerpts or [],
             )
         )
 
     ops_actions: List[OpsAction] = []
-    for i, ops_action in enumerate(ops_cands):
+    for i, a in enumerate(ops_cands):
         ops_actions.append(
             OpsAction(
-                title=ops_action.title,
-                target=ops_action.target,
-                reason=ops_action.reason,
+                title=a.title,
+                target=a.target,
+                reason=a.reason,
                 todo=oa_todos[i],
-                action_type=ops_action.action_type,
+                action_type=a.action_type,
             )
         )
 
@@ -207,9 +207,13 @@ def weekly_report_node(state: FeedbackBoardState, llm) -> FeedbackBoardState:
     return state
 
 
+# -----------------------------
+# 단독 테스트
+# -----------------------------
 if __name__ == "__main__":
-    # 1) 더미 state/weekly_context 준비 (프로젝트 io_contract 기준)
     from datetime import datetime
+    from langchain_core.runnables import RunnableLambda
+
     from app.services.feedbackBoard.io_contract import (
         PipelineInput,
         RunConfig,
@@ -222,37 +226,40 @@ if __name__ == "__main__":
         KeyTopicCandidate,
         OpsActionCandidate,
     )
-    from app.services.feedbackBoard.schemas import FeedbackBoardPost, FeedbackBoardInsight
 
-    # 2) Fake LLM (테스트 목적: 체인 흐름 + 파서만 확인)
-    #    - LangChain Runnable처럼 invoke(input)->str 를 흉내내기 위해 최소 구현
-    class FakeLLM:
-        def __or__(self, other):
-            # prompt | llm | parser 에서 llm이 가운데 들어가야 해서 단순 pass-through
-            return self
+    # Fake LLM: prompt 결과(문자열)를 받아도 무시하고 JSON 문자열 반환
+    def fake_llm(_):
+        return json.dumps(
+            {
+                "week_summary": "이번 주는 팀 내 의사소통/역할 분배 이슈가 두드러졌고, 일정 압박과 피로 호소가 함께 관찰되었습니다. 공지 채널 분산 문제도 개선 요구가 있습니다.",
+                "key_topic_summaries": [
+                    "팀 역할 분배의 불균형과 팀장의 일방적 결정에 대한 불만이 반복되었습니다. 초기 팀 룰과 커뮤니케이션 합의가 필요합니다.",
+                    "평일 저녁 마감이 직장 병행 수강생에게 지속적인 압박으로 작용하고 있습니다. 마감 완충 또는 과제량 조절 논의가 필요합니다.",
+                    "공지 채널이 분산되어 중요한 안내를 놓치기 쉽다는 피드백이 있습니다. 공지 원칙과 게시 위치를 단일화하는 조치가 요구됩니다.",
+                ],
+                "ops_action_todos": [
+                    "각 팀의 역할 분배 표를 간단히 정리해 공유하고, 업무량 편차가 큰 팀은 10분 조정 미팅을 진행하세요. 이후 익명 설문으로 역할 만족도를 확인하고 필요 시 운영진이 중재하세요.",
+                    "과제 마감 시간을 12~24시간 완충하는 옵션을 공지로 안내하고, 직장 병행 수강생을 위한 시간관리 팁을 별도 제공하세요. 다음 주 과제 난이도 체감도 설문으로 조정 근거를 확보하세요.",
+                    "중요 공지는 노션(단일)로만 게시하고 디스코드는 알림/링크 공유용으로 제한하는 원칙을 공지하세요. 공지 템플릿을 만들어 누락을 줄이세요.",
+                ],
+            },
+            ensure_ascii=False,
+        )
 
-        def invoke(self, _):
-            # parser가 받는 건 '텍스트'이므로 JSON 문자열을 반환
-            return json.dumps(
-                {
-                    "week_summary": "이번 주는 팀 내 의사소통/역할 분배 이슈가 두드러졌고, 일정 압박과 피로 호소가 함께 관찰되었습니다. 공지 채널 분산 문제도 개선 요구가 있습니다.",
-                    "key_topic_summaries": [
-                        "팀 역할 분배의 불균형과 팀장의 일방적 결정에 대한 불만이 반복되었습니다. 초기 팀 룰과 커뮤니케이션 합의가 필요합니다.",
-                        "평일 저녁 마감이 직장 병행 수강생에게 지속적인 압박으로 작용하고 있습니다. 마감 완충 또는 과제량 조절 논의가 필요합니다.",
-                        "공지 채널이 분산되어 중요한 안내를 놓치기 쉽다는 피드백이 있습니다. 공지 원칙과 게시 위치를 단일화하는 조치가 요구됩니다.",
-                    ],
-                    "ops_action_todos": [
-                        "각 팀의 역할 분배 표를 간단히 정리해 공유하고, 업무량 편차가 큰 팀은 10분 조정 미팅을 진행하세요. 이후 익명 설문으로 역할 만족도를 확인하고 필요 시 운영진이 중재하세요.",
-                        "과제 마감 시간을 12~24시간 완충하는 옵션을 공지로 안내하고, 직장 병행 수강생을 위한 시간관리 팁을 별도 제공하세요. 다음 주 과제 난이도 체감도 설문으로 조정 근거를 확보하세요.",
-                        "중요 공지는 노션(단일)로만 게시하고 디스코드는 알림/링크 공유용으로 제한하는 원칙을 공지하세요. 공지 템플릿을 만들어 누락을 줄이세요.",
-                    ],
-                },
-                ensure_ascii=False,
-            )
+    llm = RunnableLambda(fake_llm)
 
-    # 3) state 만들기
     state = FeedbackBoardState(
-        input=PipelineInput(config=RunConfig(camp_id=1, week=1, range=DateRange(start=datetime(2025, 11, 3), end=datetime(2025, 11, 9)))),
+        input=PipelineInput(
+            config=RunConfig(
+                camp_id=1,
+                week=1,
+                range=DateRange(
+                    start=datetime(2025, 11, 3),
+                    end=datetime(2025, 11, 9),
+                ),
+                analyzer_version="fb_v1",
+            )
+        ),
         raw_posts=[],
         posts=[],
         weekly_context=None,
@@ -262,7 +269,6 @@ if __name__ == "__main__":
         errors=[],
     )
 
-    # 4) weekly_context 더미 구성
     wc = WeeklyContext(
         camp_id=1,
         week=1,
@@ -288,15 +294,6 @@ if __name__ == "__main__":
                         count=1,
                         action_type="immediate",
                         post_ids=["p1"],
-                    ),
-                    ClusterItem(
-                        local_cluster_id=1,
-                        sub_category="팀장-팀원 의사소통 문제",
-                        representative_summary="팀장이 의견을 잘 안 듣는다는 불만",
-                        representative_keywords=["의사소통", "팀장", "답답"],
-                        count=1,
-                        action_type="immediate",
-                        post_ids=["p6"],
                     ),
                 ],
             )
@@ -351,7 +348,7 @@ if __name__ == "__main__":
             OpsActionCandidate(
                 title="1. 팀 역할/소통 룰 정비",
                 target="AI 1반 전체 + 각 팀 팀장",
-                reason="팀 갈등 관련 이슈가 즉시 조치 필요(immediate)로 분류되었고, 고위험 하이라이트가 존재함.",
+                reason="팀 갈등 이슈가 즉시 조치 필요(immediate)로 분류되었고, 고위험 하이라이트가 존재함.",
                 action_type="immediate",
                 related_post_ids=["p6", "p1"],
                 related_excerpts=["팀장님이 의견을 잘 안 듣고... 답답합니다.", "팀 역할이 애매해서..."],
@@ -376,19 +373,11 @@ if __name__ == "__main__":
     )
 
     state.weekly_context = wc
+    state = weekly_report_node(state, llm=llm)
 
-    # 5) 실행
-    # NOTE: 실제 환경에서는 ChatOpenAI 같은 LLM을 넘기면 됨.
-    # 여기서는 FakeLLM + Pydantic parser 흐름만 확인.
-    from langchain_core.runnables import RunnableLambda
-
-    # prompt | llm | parser 구조에서 llm이 Runnable이어야 해서
-    # FakeLLM을 RunnableLambda로 감싸서 동일하게 동작시키는 방식
-    fake_llm_runnable = RunnableLambda(lambda _: FakeLLM().invoke({}))
-
-    state = weekly_report_node(state, llm=fake_llm_runnable)
-
-    # 6) 결과 확인
-    print("errors:", state.errors)
-    print("warnings:", state.warnings)
-    print("weekly_report:", state.weekly_report.model_dump() if state.weekly_report else None)
+    assert len(state.errors) == 0, state.errors
+    assert state.weekly_report is not None
+    assert len(state.weekly_report.key_topics) == 3
+    assert len(state.weekly_report.ops_actions) == 3
+    print("✅ weekly_report_node test passed")
+    print(state.weekly_report.model_dump())
