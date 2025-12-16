@@ -37,4 +37,5 @@ dependencies = [
     "faster-whisper==1.0.3",
     "sentence-transformers>=5.1.2",
     "pytz>=2025.2",
+    "kiwipiepy>=0.22.2",
 ]

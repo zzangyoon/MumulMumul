@@ -25,25 +25,6 @@ from app.services.db_service.feedback_reports import upsert_weekly_report
 from app.services.feedbackBoard.schemas import FeedbackBoardPost
 
 
-def _post_to_row(post) -> FeedbackBoardPost:
-    """
-    프론트가 기대하는 rows 형태로 변환.
-    - 원문(raw_text) 대신 clean_text 우선
-    - ai_analysis 없는 경우도 안전하게 처리
-    """
-    a = post.ai_analysis
-    text = (a.clean_text if (a and a.clean_text) else post.raw_text) if post.raw_text else ""
-
-    return FeedbackBoardPost(
-        post_id=post.post_id,
-        camp_id=post.camp_id,
-        author_id=post.author_id,
-        raw_text=text,
-        created_at=post.created_at,
-        ai_analysis=post.ai_analysis,
-    )
-
-
 def _build_weekly_stats(state: FeedbackBoardState) -> WeeklyStats:
     """
     state.weekly_context.risk 기반으로 WeeklyStats 구성
@@ -101,7 +82,7 @@ def finalize_node(state: FeedbackBoardState) -> FeedbackBoardState:
         state.errors.append("weekly_report is None (weekly_report_node 결과가 필요)")
         return state
 
-    # 1) logs 생성: ai_analysis 기준으로 필터링 후 rows 변환
+    # 1) logs 생성: ai_analysis 기준으로 필터링
     filtered_posts = []
     for post in state.posts:
         ai_analysis = post.ai_analysis
@@ -111,8 +92,6 @@ def finalize_node(state: FeedbackBoardState) -> FeedbackBoardState:
         
         if ai_analysis.is_active and (ai_analysis.is_group_representative is None or ai_analysis.is_group_representative is True):
             filtered_posts.append(post)
-
-    rows: List[Dict[str, Any]] = [_post_to_row(p) for p in filtered_posts]
 
     # 2) stats
     stats_model: WeeklyStats = _build_weekly_stats(state)
@@ -128,7 +107,7 @@ def finalize_node(state: FeedbackBoardState) -> FeedbackBoardState:
 
     # FinalizePayload 생성
     final = FinalizePayload(
-        logs=rows,
+        logs=state.posts,
         week_summary=state.weekly_report.week_summary,
         key_topics=[kt.model_dump() for kt in state.weekly_report.key_topics],
         ops_actions=[oa.model_dump() for oa in state.weekly_report.ops_actions],

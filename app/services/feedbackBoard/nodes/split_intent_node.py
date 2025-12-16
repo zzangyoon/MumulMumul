@@ -61,9 +61,9 @@ def split_intent_node(state: FeedbackBoardState) -> FeedbackBoardState:
         segments = segments[: state.input.config.split_max_parts]
 
         # 원본 post → parent로 유지
-        # parent_post = post
-        # parent_post.ai_analysis.is_active = False  # parent는 비활성화
-        # new_posts.append(parent_post)
+        parent_post = post
+        parent_post.ai_analysis.is_active = False  # parent는 비활성화
+        new_posts.append(parent_post)
 
         # child post 생성
         for idx, seg in enumerate(segments):
@@ -86,7 +86,8 @@ def split_intent_node(state: FeedbackBoardState) -> FeedbackBoardState:
                 raw_text=seg,
                 created_at=post.created_at,
                 ai_analysis=base,
-            )
+                parent_post_id=post.post_id,
+            )   
             new_posts.append(child)
 
     state.posts = new_posts
