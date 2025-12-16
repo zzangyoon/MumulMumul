@@ -32,7 +32,9 @@ class ToolSelector:
             r"액션\s*아이템",
             r"핵심\s*내용",
             r"주요\s*포인트",
-            r"다음\s*안건"
+            r"다음\s*안건",
+            r"뭐(야|였어|였지)",
+            r"무엇"
         ],
         
         "search_meeting_transcript": [
@@ -229,16 +231,18 @@ class ToolSelector:
         query_lower = query.lower()
         tools = []
         
-        # 패턴 1: "지난 회의 요약"
-        if re.search(r"(지난|최근).*회의.*요약", query_lower):
+        # 패턴 1: "지난 회의 요약" (다중 Tool)
+        if re.search(r"(지난|최근|이전).*회의.*(요약|정리|알려)", query_lower):
             logger.info("[Multi] 지난 회의 → 요약 파이프라인")
             
+            # Tool 1 : 최근 회의 조회
             tools.append((
                 "get_recent_meetings",
                 {"group_id": group_id, "limit": 1} if group_id else {"limit": 1},
                 0.9
             ))
             
+            # Tool 2 : 요약 조회
             tools.append((
                 "get_meeting_summary",
                 {},  # 첫 번째 결과의 meeting_id 사용
@@ -247,6 +251,16 @@ class ToolSelector:
             
             return tools
         
-        # 패턴 2: 단일 Tool
+        # 패턴 2: meeting_id 명시 + 요약 요청 (단일 Tool)
+        if meeting_id and re.search(r"(요약|정리|알려)", query_lower):
+            logger.info("[Single] meeting_id 명시 → 직접 요약 조회")
+            tools.append((
+                "get_meeting_summary",
+                {"meeting_id": meeting_id},
+                0.9
+            ))
+            return tools
+
+        # 패턴 3: 단일 Tool
         single = await ToolSelector.select_tool(query, meeting_id, group_id, llm)
         return [single]

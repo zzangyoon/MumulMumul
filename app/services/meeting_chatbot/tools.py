@@ -11,13 +11,35 @@ from app.services.meeting.vectorStore_service import VectorStoreService
 logger = setup_logger(__name__)
 
 
+# 최근 회의 조회
+def _get_recent_meeting(group_id: Optional[str] = None) -> Optional[str]:
+    """최근 회의 ID 조회"""
+    try:
+        db = SessionLocal()
+        query = db.query(Meeting).filter(Meeting.status == "completed")
+
+        if group_id:
+            query = query.filter(Meeting.chat_room_id == group_id)
+        
+        recent = query.order_by(Meeting.start_time.desc()).first()
+        db.close()
+
+        if recent:
+            logger.info(f"자동 선택된 meeting_id : {recent.meeting_id}")
+            return recent.meeting_id
+        
+        return None
+    except Exception as e:
+        logger.error(f"최근 회의 조회 실패 : {e}")
+        return None
+
 # ===================================================================
 # Tool 1: 회의 목록 조회 (MongoDB 직접 조회)
 # ===================================================================
 @tool
 def get_recent_meetings(
-    group_id: Optional[str] = Field(None, description="특정 그룹의 회의만 조회"),
-    limit: int = Field(5, description="조회할 회의 개수")
+    group_id: Optional[str] = None,
+    limit: int = 5
 ) -> List[Dict[str, Any]]:
     """
     최근 회의 목록을 조회합니다.
@@ -66,7 +88,8 @@ def get_recent_meetings(
 # ===================================================================
 @tool
 def get_meeting_summary(
-    meeting_id: str = Field(..., description="조회할 회의 ID")
+    meeting_id: str = "",
+    group_id: str = ""
 ) -> Dict[str, Any]:
     """
     특정 회의의 요약본을 조회합니다.
@@ -79,9 +102,40 @@ def get_meeting_summary(
     Returns:
         요약본 (summary_text, key_points, action_items 등)
     """
-    logger.info(f"[Tool] get_meeting_summary: {meeting_id}")
+    logger.info(f"[Tool] get_meeting_summary: meeting_id={meeting_id}, group_id={group_id}")
     
     try:
+        if hasattr(meeting_id, "__class__") and "FieldInfo" in str(type(meeting_id)):
+            logger.warning(f"FieldInfo 객체 감지 : {meeting_id}")
+            meeting_id = ""
+
+        if meeting_id is None:
+            meeting_id = ""
+
+        meeting_id = str(meeting_id).strip()
+
+        if hasattr(group_id, '__class__') and 'FieldInfo' in str(type(group_id)):
+            group_id = ""
+
+        if group_id is None:
+            group_id = ""
+            
+        group_id = str(group_id).strip()
+        
+        logger.info(f"  정제된 meeting_id: '{meeting_id}', group_id: '{group_id}'")
+
+        # meeting_id가 없으면 최근 회의 자동 조회
+        if not meeting_id:
+            logger.info("meeting_id 없음 -> 최근 회의 자동 조회")
+            
+            meeting_id = _get_recent_meeting(group_id if group_id else None)
+            if not meeting_id:
+                return {
+                    "error" : "조회 가능한 회의가 없습니다.",
+                    "meeting_id" : None
+                }
+
+        # MongoDB에서 요약 조회
         mongo_db = get_mongo_db()
         mongo_service = MongoMeetingService(mongo_db)
         
@@ -162,7 +216,7 @@ def search_meeting_transcript(
 # ===================================================================
 @tool
 def get_meeting_context(
-    meeting_id: str = Field(..., description="조회할 회의 ID")
+    meeting_id: Optional[str] = Field(None, description="조회할 회의 ID")
 ) -> Dict[str, Any]:
     """
     회의의 전체 컨텍스트를 조회합니다 (전사본 + 요약본).
@@ -177,6 +231,22 @@ def get_meeting_context(
     logger.info(f"[Tool] get_meeting_context: {meeting_id}")
     
     try:
+        # meeting_id가 없으면 최근 회의 자동 조회
+        if not meeting_id:
+            logger.info("  meeting_id 없음 → 최근 회의 자동 조회")
+            db = SessionLocal()
+            recent_meeting = db.query(Meeting).filter(
+                Meeting.status == "completed"
+            ).order_by(Meeting.start_time.desc()).first()
+            db.close()
+            
+            if not recent_meeting:
+                return {"error": "조회 가능한 회의가 없습니다."}
+            
+            meeting_id = recent_meeting.meeting_id
+            logger.info(f"  자동 선택된 meeting_id: {meeting_id}")
+
+        
         mongo_db = get_mongo_db()
         mongo_service = MongoMeetingService(mongo_db)
         
