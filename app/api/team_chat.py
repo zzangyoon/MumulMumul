@@ -33,6 +33,8 @@ class TeamChatRoomResponse(BaseModel):
 
 class ChatMessageResponse(BaseModel):
     chatId: str
+    role: str
+    type: str
     userId: int
     userName: str
     message: str
@@ -162,6 +164,8 @@ def get_team_chat_messages(
         results.append(
             ChatMessageResponse(
                 chatId=str(doc["_id"]),
+                role=doc["role"],
+                type=doc["type"],
                 userId=doc["userId"],
                 userName=doc.get("userName", ""),
                 message=doc["message"],
@@ -215,6 +219,7 @@ def post_team_chat_message(
     doc = {
         "roomId": teamChatId,
         "type": "team",
+        "role": "user",
         "userId": payload.userId,
         "userName": user.name,
         "message": payload.message,
@@ -225,6 +230,8 @@ def post_team_chat_message(
 
     return ChatMessageResponse(
         chatId=str(result.inserted_id),
+        type="team",
+        role="user",
         userId=payload.userId,
         userName=user.name,
         message=payload.message,

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 sys.path.append("../..")
 
@@ -119,7 +119,7 @@ async def meeting_chatbot_ws(websocket: WebSocket):
                     "userId": user_id,
                     "userName": user_name,
                     "message": query_text,
-                    "createdAt": datetime.utcnow().isoformat(),
+                    "createdAt": datetime.now(timezone.utc),
                 }
                 collection.insert_one(user_doc)
                 CHAT_SESSIONS[groupId].append(user_doc)
@@ -140,8 +140,18 @@ async def meeting_chatbot_ws(websocket: WebSocket):
                         "confidence": result["confidence"],
                         "sources": result["sources"],
                         "relevant_segments": result["relevant_segments"],
-                        "createdAt": datetime.utcnow().isoformat(),
+                        "createdAt": datetime.now(timezone.utc),
                     }
+
+                    collection.insert_one({
+                        "roomId": groupId,
+                        "type": "ai",
+                        "role": "assistant",
+                        "userId": 0,
+                        "userName": "AI",
+                        "message": result["answer"],
+                        "createdAt": datetime.now(timezone.utc),
+                    })
 
                     CHAT_SESSIONS[groupId].append(assistant_doc)
 

@@ -143,7 +143,7 @@ class TeamChatMessage(BaseModel):
     - message: 실제 채팅 내용
     - created_at: 메시지 생성 시각
     - type: "team" (팀 채팅) or "ai" (AI 챗봇)
-    - role: "user" (사용자 메시지) or "assistant" (AI
+    - role: "user" (사용자 메시지) or "assistant" (AI 챗봇)
     """
     room_id: str
     user_id: int
@@ -151,7 +151,7 @@ class TeamChatMessage(BaseModel):
     message: str
     created_at: datetime = datetime.utcnow()
     type: Literal["team", "ai"] = "team"
-    role: Optional[Literal["user", "assistant"]] = None
+    role: Literal["user", "assistant"] = "user"
 
 
 # TeamChatMessage 모델을 Mongo 레지스트리에 등록
