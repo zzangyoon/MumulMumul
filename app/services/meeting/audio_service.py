@@ -12,6 +12,7 @@ from app.services.meeting.schemas import AudioChunkUploadResponse
 from app.services.meeting.meeting_service import MeetingService
 from app.core.db import SessionLocal
 from app.config import settings
+from app.core.timezone import timestamp_to_datetime, get_current_datetime
 import asyncio
 
 logger = setup_logger(__name__)
@@ -196,6 +197,17 @@ class AudioService:
     ) -> AudioChunkUploadResponse:
         
         logger.info(f"Audio chunk upload: Meeting={meeting_id}, User={user_id}, Chunk={chunk_index}")
+
+        upload_dt = timestamp_to_datetime(upload_timestamp)
+        server_dt = get_current_datetime()
+        
+        logger.info(
+            f"타임스탬프 비교:\n"
+            f"  upload_timestamp: {upload_timestamp}\n"
+            f"  -> datetime: {upload_dt} (UTC 기준 변환)\n"
+            f"  server_time: {server_dt} (UTC)\n"
+            f"  차이: {(server_dt.timestamp() * 1000 - upload_timestamp)/1000:.1f}초"
+        )
         
         # 회의 상태 초기화
         self._init_meeting_state(meeting_id)
