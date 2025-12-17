@@ -2,6 +2,8 @@
 import sys
 from pathlib import Path
 
+from app.services.db_service.curriculum_config import get_curriculum_config_for_camp
+
 CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[2]   # .../MumulMumul
 sys.path.append(str(ROOT_DIR))
@@ -11,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from requests import Session
 from app.config import WEEK_INDEX
 from app.core.db import get_db
-from app.core.mongodb import CurriculumReport
+from app.core.mongodb import CurriculumConfig, CurriculumReport
 from app.services.db_service.camp import get_camp_by_user_id
 from app.services.db_service.curriculum_reports import fetch_curriculum_report
 from app.services.learning_quiz.service import create_quiz
@@ -35,16 +37,21 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
 
     grade = payload.grade
     user_id = payload.userId
-    camp_id = get_camp_by_user_id(db, user_id).camp_id
+    camp_id = 2 # get_camp_by_user_id(db, user_id).camp_id
     week_index = WEEK_INDEX
 
     try:
+        context = ""
+        
+        curriculum_config: CurriculumConfig = get_curriculum_config_for_camp(db, camp_id)
+        if curriculum_config:
+            curriculum_config_week = curriculum_config.weeks[week_index - 1]
+            context += "\n[이번주 커리큘럼]\n" + curriculum_config_week.detailed_description
+
         curriculum_report: CurriculumReport = fetch_curriculum_report(camp_id, week_index)
-        if not curriculum_report:
-            # 로그는 항상 한글로
-            logger.info(f"[커리큘럼 리포트 없음] camp_id: {camp_id}, week_index: {week_index} - 새로운 커리큘럼 리포트 생성 시도")
-            curriculum_report: CurriculumReport = create_curriculum_report(camp_id, week_index)
-        context = curriculum_report['ai_insights']['hardest_part_summary']
+        if curriculum_report:
+            context += "[학생들이 어려워하는 내용]\n" + curriculum_report['ai_insights']['hardest_part_summary']
+
         logger.info(f"[커리큘럼 리포트 기반 컨텍스트 획득] camp_id: {camp_id}, week_index: {week_index}")
         result = create_quiz(context, grade)
         logger.info(f"[학습 퀴즈 생성 성공] user_id: {user_id}, grade: {grade}, quiz_count: {len(result.quiz)}")
