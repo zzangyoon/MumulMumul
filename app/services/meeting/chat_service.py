@@ -41,11 +41,6 @@ class ChatService:
             start_dt = timestamp_to_datetime(start_timestamp)
             end_dt = timestamp_to_datetime(end_timestamp)
 
-            logger.info(
-                f"start_iso ::: {start_dt.isoformat()}\n"
-                f"end_iso ::: {end_dt.isoformat()}\n"
-            )
-
             # MongoDB 쿼리
             messages = self.collection.find({
                 "roomId" : room_id,
