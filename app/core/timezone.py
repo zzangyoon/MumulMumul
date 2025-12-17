@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from app.config import settings
 
 def get_current_timestamp() -> int:
@@ -13,7 +13,7 @@ def get_current_datetime() -> datetime:
 
 def timestamp_to_datetime(timestamp_ms: int) -> datetime:
     """타임스탬프 → datetime (timezone-aware)"""
-    return datetime.fromtimestamp(timestamp_ms / 1000, settings.TIMEZONE)
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
 
 
 def datetime_to_timestamp(dt: datetime) -> int:

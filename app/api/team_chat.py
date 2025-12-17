@@ -1,7 +1,7 @@
 # app/api/team_chat_router.py
 
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -218,7 +218,7 @@ def post_team_chat_message(
         "userId": payload.userId,
         "userName": user.name,
         "message": payload.message,
-        "createdAt": datetime.now()
+        "createdAt": datetime.now(timezone.utc)
     }
 
     result = collection.insert_one(doc)
