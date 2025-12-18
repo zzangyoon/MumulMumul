@@ -38,29 +38,29 @@ def aggregate_weekly_context_node(state: FeedbackBoardState) -> FeedbackBoardSta
     ]
 
     # ----------------------------
-    # 1) RiskAgg 계산
+    # 1) RiskAgg 계산 : 전체 갯수 집계는 모든 post 대상
     # ----------------------------
     sev_cnt = Counter()
     toxic_cnt = 0
 
-    for p in active_posts:
+    for p in posts:
         sev = p.ai_analysis.severity or "low"
         sev_cnt[sev] += 1
         if p.ai_analysis.is_toxic:
             toxic_cnt += 1
 
     danger_count = sum(
-        1 for p in active_posts
+        1 for p in posts
         if (p.ai_analysis.is_toxic is True) or (p.ai_analysis.severity == "high")
     )
     warning_count = sum(
-        1 for p in active_posts
+        1 for p in posts
         if (p.ai_analysis.severity == "medium") and (p.ai_analysis.is_toxic is not True)
     )
-    normal_count = max(0, len(active_posts) - danger_count - warning_count)
+    normal_count = max(0, len(posts) - danger_count - warning_count)
 
     risk = RiskAgg(
-        total=len(active_posts),
+        total=len(posts),
         toxic_count=int(toxic_cnt),
         severity_count={
             "low": int(sev_cnt.get("low", 0)),

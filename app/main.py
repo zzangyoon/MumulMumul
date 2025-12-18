@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.api.connection import router as connection_router
 from app.api.attendance import router as attendance_router
+from app.api.attendance_ruleset import router as attendance_ruleset_router
 from app.api.meeting import router as meeting_router
 from app.api.team_chat import router as team_chat_router
 from app.core.schemas import init_db
@@ -81,3 +82,4 @@ app.include_router(team_chat_router, prefix="/chat")
 app.include_router(learning_quiz_router, prefix="/learning_quiz")
 app.include_router(feedback_router, prefix="/feedback")
 app.include_router(camp_router, prefix="/camps")
+app.include_router(attendance_ruleset_router, prefix="/attendance/ruleset")

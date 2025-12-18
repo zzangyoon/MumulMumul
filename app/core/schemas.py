@@ -1,5 +1,7 @@
 # app/core/schemas.py
 from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel
 from sqlalchemy import (
     Date,
     create_engine,
@@ -127,6 +129,14 @@ class MeetingParticipant(Base):
 # session_activity_log
 # (접속/세션 상태 기록)
 # ------------------------
+class AttendanceType(Enum):
+    ON_TIME = "ON_TIME"
+    LATE = "LATE"
+    EARLY_LEAVE = "EARLY_LEAVE"
+    ABSENT = "ABSENT"
+    # 비정상적 활동 기록
+    UNNORMAL_ACTIVITY = "UNNORMAL_ACTIVITY"
+
 class SessionActivityLog(Base):
     __tablename__ = "session_activity_log"
 
@@ -137,30 +147,24 @@ class SessionActivityLog(Base):
 
     user = relationship("User")
 
-attendance_status_enum = Enum(
-    "정상",
-    "지각",
-    "조퇴",
-    "결석",
-    "부분참여",
-    name="attendance_status_enum",
-)
-
-class DailyAttendance(Base):
-    __tablename__ = "daily_attendance"
+class AttendanceDaily(Base):
+    __tablename__ = "attendance_daily"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    camp_id = Column(Integer, ForeignKey("camp.camp_id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
-    date = Column(Date, nullable=False)
+    camp_id = Column(Integer, nullable=False, index=True)
+    student_id = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
 
-    total_minutes = Column(Integer, nullable=False)
-    morning_minutes = Column(Integer, nullable=False, default=0)   # 9–12
-    afternoon_minutes = Column(Integer, nullable=False, default=0) # 13–18
+    # ON_TIME / LATE / EARLY_LEAVE / ABSENT
+    attendance_type = Column(AttendanceType, nullable=True, index=True)
+    total_active_time= Column(Integer, nullable=True)  # 총 접속 시간 (분 단위)
+    first_join= Column(DateTime, nullable=True)
+    last_leave= Column(DateTime, nullable=True)
+    never_joined= Column(Boolean, nullable=True, default=False)
 
-    status = Column(attendance_status_enum, nullable=False)
-    note = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 # ------------------------
 # STT Segment DB
@@ -230,6 +234,34 @@ class ChatRoomUser(Base):
     room = relationship("ChatRoom", back_populates="members")
     user = relationship("User")
 
+# ================================
+# 운영진 공지/DM DB
+# ================================
+# 공지/DM 로그 저장
+class NoticeLog(Base):
+    __tablename__ = "notice_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camp_id = Column(Integer, nullable=False)
+    Recipient_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+    Sender_id = Column(Integer, ForeignKey("user.user_id"), nullable=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_need_confirmation = Column(Boolean, default=False, nullable=False)
+
+    sender = relationship("User", foreign_keys=[Sender_id])
+
+# 유저가 체크 했는지 여부
+class NoticeConfirmation(Base):
+    __tablename__ = "notice_confirmation"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    notice_id= Column(Integer, ForeignKey("notice_log.id"), nullable=False)
+    camp_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+    is_confirmed = Column(Boolean, default=False, nullable=False)
+    confirmed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    notice = relationship("NoticeLog", foreign_keys=[notice_id])
 
 # =====================================
 # DB 초기화 함수

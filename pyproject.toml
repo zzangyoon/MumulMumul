@@ -36,4 +36,5 @@ dependencies = [
     "sentence-transformers>=5.1.2",
     "pytz>=2025.2",
     "noisereduce>=3.0.3",
+    "kiwipiepy>=0.22.2",
 ]
