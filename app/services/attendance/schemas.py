@@ -6,14 +6,25 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 from app.core.mongodb import register_mongo_model
+from app.core.schemas import AttendanceType
 
+class AttendanceFeature(BaseModel):
+    total_active_time: Optional[int] = None
+    first_join: Optional[datetime] = None
+    last_leave: Optional[datetime] = None
+    never_joined: Optional[bool] = None
+
+class AttendanceResult(BaseModel):
+    student_id: int
+    attendance_type: AttendanceType
+    features: AttendanceFeature
 
 class AttendanceSummary(BaseModel):
     attendance_rate: float
     total_students: int
-    high_risk_count: int
-    warning_count: int
-    late_rate: Optional[float] = None
+    late_rate: float = None
+    high_risk_count: Optional[int] = None
+    warning_count: Optional[int] = None
 
 class AttendanceStudentStat(BaseModel):
     student_id: int
@@ -22,10 +33,49 @@ class AttendanceStudentStat(BaseModel):
     absent_count: int
     late_count: int
     early_leave_count: int
-    pattern_type: Optional[str] = None
-    risk_level: Literal["고위험", "위험", "주의", "정상"]
-    trend: Optional[float] = None
-    ops_action: Optional[str] = None
+    personality_type: str = None
+    attendance_records: List[Dict[str, AttendanceType]] = None  # 날짜별 출결유형 요약
+    recent_30_attendance_summary: str = None  # 최근 30일 “P/L/E/A” 요약,
+    consecutive_absent_days: int = None,
+    consecutive_late_days: int = None,
+    attendance_rate_7d: float = None,
+    attendance_rate_14d: float = None,
+    attendance_rate_30d: float = None,
+
+    risk_level: Literal[
+        "고위험",
+        "위험",
+        "주의",
+        "정상",
+        "미확인",
+    ] = Field(
+        description="학생의 출결 위험 수준"
+    )
+
+    pattern_type: Literal[
+        "안정형",
+        "지각형",
+        "조퇴형",
+        "결석형",
+        "불규칙형",
+        "공백위험형",
+        "신규",
+        "데이터없음",
+    ] = Field(
+        description="학생의 주요 출결 패턴 유형"
+    )
+
+    trend: float = Field(
+        description=(
+            "최근 출결 추세 변화 값. "
+            "양수는 개선(+), 음수는 악화(-), 0에 가까울수록 변화 없음. "
+            "예: -0.25, 0.1"
+        )
+    )
+
+    ops_action: str = Field(
+        description="운영진이 취해야 할 권장 조치 또는 커뮤니케이션 가이드"
+    )
 
 class AttendanceReport(BaseModel):
     camp_id: int
@@ -91,9 +141,6 @@ class AttendanceRuleset(BaseModel):
         default_factory=lambda: datetime(1970, 1, 1, 13, 0),
         description="점심 시간 종료",
     )
-
-    # 결석 우선 규칙 (점심 제외 연속 공백)
-    absent_if_inactive_gap_minutes_gte: Optional[int] = 240
 
     # 환산 규칙
     convert_to_absent_late_plus_earlyleave_unit: int = Field(

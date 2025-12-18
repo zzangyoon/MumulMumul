@@ -5,12 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.schemas import AttendanceType
 from app.services.db_service.session_activity_log import get_session_activity_logs_for_camp_today
-from app.services.attendance.schemas import AttendanceRuleset
-
-class AttendanceResult(BaseModel):
-    student_id: int
-    attendance_type: AttendanceType
-    features: AttendanceFeature
+from app.services.attendance.schemas import AttendanceFeature, AttendanceResult, AttendanceRuleset
 
 FULL_DAY_MINUTES = 8 * 60
 START_TIME = time(9, 0)
@@ -27,14 +22,11 @@ def _judge_one_student(
       attendance_type, evidence_features(dict)
     """
     # 로그를 체크하는 시간이 언제인지에 따라 달라짐
-    # 오전 9시 - 12시 사이 체크시 : 지각 판단 가능, 결석 판단 불가능
-    # 오후 1시 - 6시 사이 체크시 : 조퇴 판단 가능, 결석 판단 가능
-    # 저녁 6시 이후 체크시 : 모두 판단 가능
     # 이 내용은 규칙셋을 반영 할것
     current_time = datetime.now().time()
-    can_judge_absent = current_time >= time(13, 0)  # 오후 1시 이후
-    can_judge_early_leave = current_time >= time(18, 0)  # 오후 6시 이후
-    can_judge_late = current_time >= time(9, 0)  # 오전 9시 이후
+    can_judge_absent = current_time >= LUNCH_END  # 점심시간 이후
+    can_judge_early_leave = current_time >= END_TIME  # 근무 종료시간 이후
+    can_judge_late = current_time >= START_TIME  # 근무 시작시간 이후
 
     # 2) ABSENT 결석 판단
     if can_judge_absent and not logs:
@@ -77,7 +69,7 @@ def _judge_one_student(
                 features=AttendanceFeature(first_join=first_join))
     
     # 기본 출석 판단
-    attendance_type = AttendanceType.PRESENT
+    attendance_type = AttendanceType.ON_TIME
 
     return AttendanceResult(
         student_id=user_id,
@@ -96,7 +88,6 @@ def judge_attendance_for_students(
     logs = get_session_activity_logs_for_camp_today(
         db, camp_id, day_start, day_end)
 
-    
     # Global값 설정
     FULL_DAY_MINUTES = ruleset_doc.full_day_minutes if ruleset_doc and ruleset_doc.full_day_minutes else 8 * 60
     START_TIME = ruleset_doc.start_time.time() if ruleset_doc and ruleset_doc.start_time else time(9, 0)

@@ -1,5 +1,6 @@
 # app/api/user_router.py
 
+from functools import cache
 import sys
 
 from app.services.db_service.session_activity_log import create_session_activity_log, update_leave_time
@@ -102,6 +103,7 @@ import json
 from pathlib import Path
 from app.config import PERSONAL_SURVEY_CONFIG_PATH
 
+@cache
 def load_trait_config(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)

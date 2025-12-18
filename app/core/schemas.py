@@ -1,5 +1,7 @@
 # app/core/schemas.py
 from datetime import datetime
+from typing import Optional
+from pydantic import BaseModel
 from sqlalchemy import (
     Date,
     create_engine,
@@ -128,18 +130,12 @@ class MeetingParticipant(Base):
 # (접속/세션 상태 기록)
 # ------------------------
 class AttendanceType(Enum):
-    PRESENT = "PRESENT"
+    ON_TIME = "ON_TIME"
     LATE = "LATE"
     EARLY_LEAVE = "EARLY_LEAVE"
     ABSENT = "ABSENT"
     # 비정상적 활동 기록
     UNNORMAL_ACTIVITY = "UNNORMAL_ACTIVITY"
-
-class AttendanceFeature(BaseModel):
-    total_active_time: Optional[int] = None
-    first_join: Optional[datetime] = None
-    last_leave: Optional[datetime] = None
-    never_joined: Optional[bool] = None
 
 class SessionActivityLog(Base):
     __tablename__ = "session_activity_log"
@@ -151,8 +147,8 @@ class SessionActivityLog(Base):
 
     user = relationship("User")
 
-class AttendanceDailyAggregate(Base):
-    __tablename__ = "attendance_daily_aggregate"
+class AttendanceDaily(Base):
+    __tablename__ = "attendance_daily"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
@@ -160,40 +156,15 @@ class AttendanceDailyAggregate(Base):
     student_id = Column(Integer, nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
 
-    # PRESENT / LATE / EARLY_LEAVE / ABSENT
+    # ON_TIME / LATE / EARLY_LEAVE / ABSENT
     attendance_type = Column(AttendanceType, nullable=True, index=True)
-    attendance_features = Column(Text, nullable=True)
+    total_active_time= Column(Integer, nullable=True)  # 총 접속 시간 (분 단위)
+    first_join= Column(DateTime, nullable=True)
+    last_leave= Column(DateTime, nullable=True)
+    never_joined= Column(Boolean, nullable=True, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-
-class AttendanceDMDispatch(Base):
-    __tablename__ = "attendance_dm_dispatch"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-
-    camp_id = Column(Integer, nullable=False, index=True)
-    target_date = Column(Date, nullable=False, index=True)
-    student_id = Column(Integer, nullable=False, index=True)
-
-    # DM 트리거 사유(예: "late_today", "high_risk", "n_days_inactive")
-    trigger_reason = Column(String(50), nullable=False)
-
-    # 학생 위험도(리포트에서 산출한 값)
-    risk_level = Column(String(10), nullable=True)  # "고위험/위험/주의/정상" 등
-
-    channel = Column(String(20), nullable=False)    # "DISCORD"/"EMAIL"/"INAPP" 등
-    message = Column(Text, nullable=False)
-
-    # PLANNED / SENT / FAILED / SKIPPED
-    status = Column(String(20), nullable=False, default="PLANNED", index=True)
-
-    tool_run_id = Column(String(100), nullable=True)
-    error_message = Column(Text, nullable=True)
-
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    sent_at = Column(DateTime, nullable=True)
 
 # ------------------------
 # STT Segment DB
@@ -263,6 +234,34 @@ class ChatRoomUser(Base):
     room = relationship("ChatRoom", back_populates="members")
     user = relationship("User")
 
+# ================================
+# 운영진 공지/DM DB
+# ================================
+# 공지/DM 로그 저장
+class NoticeLog(Base):
+    __tablename__ = "notice_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    camp_id = Column(Integer, nullable=False)
+    Recipient_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+    Sender_id = Column(Integer, ForeignKey("user.user_id"), nullable=True)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_need_confirmation = Column(Boolean, default=False, nullable=False)
+
+    sender = relationship("User", foreign_keys=[Sender_id])
+
+# 유저가 체크 했는지 여부
+class NoticeConfirmation(Base):
+    __tablename__ = "notice_confirmation"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    notice_id= Column(Integer, ForeignKey("notice_log.id"), nullable=False)
+    camp_id = Column(Integer, nullable=False)
+    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+    is_confirmed = Column(Boolean, default=False, nullable=False)
+    confirmed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    notice = relationship("NoticeLog", foreign_keys=[notice_id])
 
 # =====================================
 # DB 초기화 함수
