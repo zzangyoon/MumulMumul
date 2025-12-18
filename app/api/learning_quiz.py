@@ -43,7 +43,7 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
     try:
         context = ""
 
-        curriculum_config: CurriculumConfig = get_curriculum_config_for_camp(db, camp_id)
+        curriculum_config: CurriculumConfig = get_curriculum_config_for_camp(camp_id)
         if curriculum_config:
             curriculum_config_week = curriculum_config.weeks[week_index - 1]
             context += "[이번주 커리큘럼]\n" + " ".join(curriculum_config_week.topics) + "\n"
