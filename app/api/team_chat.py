@@ -164,8 +164,8 @@ def get_team_chat_messages(
         results.append(
             ChatMessageResponse(
                 chatId=str(doc["_id"]),
-                role=doc["role"],
-                type=doc["type"],
+                role=doc.get("role", "user"),
+                type=doc.get("type", "team"),
                 userId=doc["userId"],
                 userName=doc.get("userName", ""),
                 message=doc["message"],
