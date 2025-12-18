@@ -2,6 +2,8 @@
 
 import sys
 
+from app.services.db_service.session_activity_log import create_session_activity_log, update_leave_time
+
 sys.path.append("../..")
 
 from datetime import datetime
@@ -72,15 +74,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             },
         )
     
-    # 세션 활동 로그 기록
-    log = SessionActivityLog(
-        user_id=user.user_id,
-        join_at=datetime.utcnow()
-    )
-    db.add(log)
-    db.commit()
-
-    print(f"User {user.user_id} logged in at {log.join_at}")
+    create_session_activity_log(db, user)
 
     return LoginResponse(
         userId=user.user_id,
@@ -99,18 +93,7 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
     """
     userId = payload.userId
 
-    log: SessionActivityLog | None = (
-        db.query(SessionActivityLog)
-        .filter(SessionActivityLog.user_id == userId)
-        .order_by(SessionActivityLog.join_at.desc())
-        .first()
-    )
-
-    if log and not log.leave_at:
-        log.leave_at = datetime.utcnow()
-        db.commit()
-
-    print(f"User {userId} logged out at {log.leave_at if log else 'N/A'}")
+    update_leave_time(db, userId)
 
     return {"message": "로그아웃 처리 완료"}
 

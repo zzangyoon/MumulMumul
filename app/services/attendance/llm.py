@@ -5,7 +5,6 @@ from typing import Dict, Any
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
-from app.services.attendance.schemas import AIInsights
 
 
 def build_ai_insights_chain(model_name: str = "gpt-4.1-mini"):

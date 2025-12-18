@@ -4,7 +4,7 @@ from datetime import datetime, date, time, timedelta
 from collections import defaultdict
 from typing import List, Dict, Tuple
 
-from app.core.schemas import DailyAttendance, SessionActivityLog, Camp, User, attendance_status_enum
+from app.core.schemas import DailyAttendance, SessionActivityLog, Camp, User
 
 MORNING_START = time(9, 0)
 MORNING_END   = time(12, 0)

@@ -4,7 +4,7 @@ from typing import Optional
 from pymongo.database import Database
 
 from app.core.mongodb import get_mongo_db
-from app.core.mongodb import AttendanceReport, AttendanceSummary, AttendanceStudentStat
+from app.services.attendance.schemas import AttendanceReport
 
 mongo_db: Database = get_mongo_db()
 report_col = mongo_db["attendance_reports"]

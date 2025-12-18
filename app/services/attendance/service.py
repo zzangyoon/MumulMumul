@@ -1,298 +1,259 @@
 # app/services/attendance/service.py
 
-from datetime import datetime, timedelta
-from typing import List
+from datetime import datetime, timedelta, time, date
+from enum import Enum
+import json
+from typing import List, Dict, Any, Optional
 
-from fastapi import Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from pymongo.database import Database
 
-from app.core.db import get_db
-from app.core.schemas import Camp, User, DailyAttendance
-from app.core.mongodb import (
-    AttendanceSummary,
-    AttendanceStudentStat,
-    AttendanceReport,
-)
-from app.services.db_service.attendance_report import (
-    upsert_attendance_report,
-)
-
-from app.services.db_service.camp import (
-    get_camp_by_id,
-    get_students_by_camp,
-)
-
-FULL_DAY_MINUTES = 8 * 60
-
-from datetime import datetime, timedelta, time
-from typing import List
-from sqlalchemy.orm import Session
-from app.core.schemas import User, DailyAttendance  # 상단 import 정리 추천
+from app.core.schemas import Camp, User
+from app.services.attendance.nodes.judge_attendance import judge_attendance_for_students
+from app.services.attendance.schemas import AttendanceRuleset
+from app.services.db_service.attendance_ruleset import get_attendance_ruleset
+from app.services.db_service.camp import get_camp_by_id, get_students_by_camp
+from app.services.db_service.session_activity_log import get_session_activity_logs_for_camp_today
+from app.services.db_service.tendency_profiles import get_tendency_profiles_context
 
 
-def build_daily_attendance(
+# ------------------------------------------------------------
+# 0) 유틸: 날짜 normalize / 시간 범위
+# ------------------------------------------------------------
+def _day_range(target_dt: datetime):
+    day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+    return day_start, day_end
+
+
+# ------------------------------------------------------------
+# 1) A. 데이터 수집 (Read Model)
+#   - students (sqlite)
+#   - today session logs (sqlite)
+#   - ruleset (mongo)
+# ------------------------------------------------------------
+class AttendanceContext(BaseModel):
+    camp: Camp
+    students: List[User]
+    day_start: datetime
+    day_end: datetime
+    ruleset_doc: AttendanceRuleset | None
+    tendency_context: str   
+
+def _load_context(
     db: Session,
+    mongo: Database,
     camp_id: int,
     target_dt: datetime,
-    students: List[User],
-):
-    from app.core.schemas import SessionActivityLog, DailyAttendance
+) -> AttendanceContext:
+    # 1) 캠프 / 학생 조회
+    camp: Camp = get_camp_by_id(db, camp_id)
+    students: List[User] = get_students_by_camp(db, camp_id)
 
-    results = []
-
-    # 날짜 기준점: 해당 날짜의 00:00:00 ~ 다음날 00:00:00
+    # 2) 날짜 범위
     day_start = target_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(days=1)
 
-    # 기준 시간
-    start_time = time(9, 0, 0)
-    end_time = time(18, 0, 0)
-    FULL_DAY_MINUTES = 8 * 60
+    # 3) ruleset 로딩
+    ruleset_doc: AttendanceRuleset | None = get_attendance_ruleset(camp_id)
 
-    for student in students:
-        logs = (
-            db.query(SessionActivityLog)
-            .filter(
-                SessionActivityLog.user_id == student.user_id,
-                SessionActivityLog.join_at >= day_start,
-                SessionActivityLog.join_at < day_end,
-            )
-            .all()
-        )
+    # 4) 성향 분석 JSON 로딩
+    tendency_context = get_tendency_profiles_context()
 
-        if not logs:
-            # 결석
-            daily = DailyAttendance(
-                user_id=student.user_id,
-                camp_id=camp_id,
-                date=day_start,        # ✅ 항상 00:00:00 로 normalize 된 datetime
-                status="결석",
-                total_minutes=0,
-            )
-            db.add(daily)
-            results.append(daily)
-            continue
+    return AttendanceContext(
+        camp=camp,
+        students=students,
+        day_start=day_start,
+        day_end=day_end,
+        ruleset_doc=ruleset_doc,
+        tendency_context=tendency_context,
+    )
 
-        # 그날 가장 빠른 입실 / 마지막 퇴실
-        join_at = min(log.join_at for log in logs)
-        leave_at = max(log.leave_at for log in logs)
+# ------------------------------------------------------------
+# 3) B. 규칙 엔진 (결정론)
+#   - session_activity_log에서 피처 계산
+#   - compiled_rules 적용해서 attendance_type 결정
+#   - (중요) 결과는 session_activity_log + daily_aggregate 저장에 쓰임
+# ------------------------------------------------------------
 
-        total_minutes = int((leave_at - join_at).total_seconds() // 60)
-
-        # 상태 판단
-        if total_minutes <= 0:
-            status = "결석"
-        elif join_at.time() > start_time:
-            status = "지각"
-        elif leave_at.time() < end_time:
-            status = "조퇴"
-        else:
-            # Enum에 "정상" 없으면 None으로 두는 게 안전
-            status = "정상"
-
-        daily = DailyAttendance(
-            user_id=student.user_id,
-            camp_id=camp_id,
-            date=day_start,
-            status=status,
-            total_minutes=total_minutes,
-            morning_minutes=0,    # 추후 개선 가능
-            afternoon_minutes=0,  # 추후 개선 가능
-            note="",
-        )
-        db.add(daily)
-        results.append(daily)
-
-    db.commit()
-    return results
-
-from datetime import datetime, timedelta
-from typing import List
-from sqlalchemy.orm import Session
-from app.core.schemas import DailyAttendance
-from app.services.db_service.camp import get_students_by_camp
-
-
-def _fetch_daily_attendance_for_range(
+# ------------------------------------------------------------
+# 4) C. 저장 레이어 (Write Model)
+#   - session_activity_log: attendance_type, attendance_date, ruleset_id 업데이트
+#   - attendance_daily_aggregate: upsert
+# ------------------------------------------------------------
+def _persist_daily_results(
     db: Session,
     camp_id: int,
-    start_date: datetime,
-    end_date: datetime,
-) -> List[DailyAttendance]:
-    # 기준일을 모두 00:00:00 로 normalize
-    start_dt = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_dt = end_date.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    # 1) 기존 DailyAttendance 가져오기
-    rows = (
-        db.query(DailyAttendance)
-        .filter(
-            DailyAttendance.camp_id == camp_id,
-            DailyAttendance.date >= start_dt,
-            DailyAttendance.date <= end_dt,
-        )
-        .all()
-    )
-
-    # 해당 기간의 모든 날짜(datetime, 00:00:00) 리스트
-    date_range = [
-        start_dt + timedelta(days=i)
-        for i in range((end_dt - start_dt).days + 1)
-    ]
-
-    # 2) 캠프 학생 목록
-    students = get_students_by_camp(db, camp_id)
-
-    # 3) 날짜별 누락된 데이터 생성
-    #    DailyAttendance.date도 datetime이므로, 같은 날짜는 00:00:00으로 맞춰서 키 생성
-    existing_dates = {
-        datetime.combine(row.date, datetime.min.time())
-        for row in rows
-    }
-
-    for day_start in date_range:
-        if day_start not in existing_dates:
-            # DailyAttendance 자동 생성 (해당 날짜 전체)
-            new_rows = build_daily_attendance(
-                db=db,
-                camp_id=camp_id,
-                target_dt=day_start,
-                students=students,
-            )
-            rows.extend(new_rows)
-
-    return rows
-
-
-def _build_attendance_report_struct(
-    camp: Camp,
-    students: List[User],
-    daily_rows: List[DailyAttendance],
-    target_date: datetime,
-) -> AttendanceReport:
+    target_dt: datetime,
+    ruleset_id: str,
+    results: List[Dict[str, Any]],
+):
     """
-    SQL DailyAttendance → Mongo AttendanceReport
-    - camp.start_date ~ target_date까지 누적 데이터를 이용
+    results item 예:
+      {
+        "student_id": 123,
+        "attendance_type": "...",
+        "active_minutes": ...,
+        "max_inactive_gap_minutes": ...,
+      }
     """
 
-    student_by_id = {s.user_id: s for s in students}
-    days_set = {row.date for row in daily_rows}
-    num_days = len(days_set) if days_set else 1
+    # day = target_dt.date()
 
-    student_stats: List[AttendanceStudentStat] = []
+    # for each result:
+    #   1) session_activity_log 업데이트
+    #      - 해당 학생의 "오늘" 로그들에 attendance_type, attendance_date, ruleset_id set
+    #      - 로그가 없으면? (absence는 로그가 없으니 session_activity_log 업데이트는 스킵)
+    #
+    #   2) attendance_daily_aggregate upsert
+    #      - (camp_id, student_id, date) unique
+    #      - attendance_type 저장
+    #      - active_minutes/max_gap 저장 (없으면 null)
 
-    for user_id, student in student_by_id.items():
-        rows = [r for r in daily_rows if r.user_id == user_id]
+    # db.commit()
+    return
 
-        if not rows:
-            attendance_rate = 0.0
-            absent_count = num_days
-            late_count = 0
-            early_leave_count = 0
-        else:
-            total_ratio = 0.0
-            absent_count = 0
-            late_count = 0
-            early_leave_count = 0
 
-            for r in rows:
-                day_ratio = min(r.total_minutes / float(FULL_DAY_MINUTES), 1.0)
-                total_ratio += day_ratio
+# ------------------------------------------------------------
+# 5) D. 리포트 계산 레이어 (Skeleton Report)
+#   - attendance_daily_aggregate 기반으로 누적 카운트/출석률 계산
+#   - "전체 참여일" = 주말/공휴일 제외 평일만
+# ------------------------------------------------------------
+def _build_skeleton_report(
+    db: Session,
+    camp_id: int,
+    camp_name: str,
+    target_dt: datetime,
+    students: List[Any],
+):
+    """
+    return AttendanceReport (students: 기본 통계만 채움)
+    """
 
-                if r.status == "결석":
-                    absent_count += 1
-                if r.status == "지각":
-                    late_count += 1
-                if r.status == "조퇴":
-                    early_leave_count += 1
+    # 1) 캠프 시작일~target_dt 범위 구함 (camp.start_date 필요)
+    # start = camp.start_date
+    # end = target_dt.date()
 
-            attendance_rate = total_ratio / num_days
+    # 2) 참여일(business days) 계산
+    # - weekday only (Mon-Fri)
+    # - 공휴일 제외: (나중에 holiday source 연결)
+    # total_participation_days = ...
 
-        if attendance_rate < 0.5 or absent_count >= 2:
-            risk_level = "고위험"
-        elif attendance_rate < 0.7 or absent_count == 1 or (late_count + early_leave_count) >= 3:
-            risk_level = "위험"
-        elif attendance_rate < 0.85 or (late_count + early_leave_count) >= 1:
-            risk_level = "주의"
-        else:
-            risk_level = "정상"
+    # 3) 각 학생별 누적 집계
+    # - attendance_daily_aggregate에서 date<=target_dt의 기록 가져옴
+    # - absent_count / late_count / early_leave_count 계산
+    # - attendance_rate = present_days / total_participation_days
+    #
+    # 주의: present_days 계산할 때 LATE/EARLY_LEAVE를 출석으로 포함할지 정책 필요
+    # 지금은: PRESENT/LATE/EARLY_LEAVE 모두 "참여"로 잡는 식이 현실적
 
-        stat = AttendanceStudentStat(
-            student_id=user_id,
-            name=getattr(student, "name", f"수강생 {user_id}"),
-            attendance_rate=attendance_rate,
-            absent_count=absent_count,
-            late_count=late_count,
-            early_leave_count=early_leave_count,
-            pattern_type=None,  # ✅ 나중에 LLM이 채울 부분
-            risk_level=risk_level,
-            trend=None,         # ✅ target_date 기준 N일 변화량 등
-            ops_action=None,    # ✅ 개별 액션 제안 (LLM)
-        )
-        student_stats.append(stat)
+    # 4) summary 계산
+    # attendance_rate (전체 평균)
+    # total_students
+    # high_risk_count/warning_count는 아직 0 (LLM 전)
+    # late_rate = late_students / total_students
 
-    total_students = len(student_stats) or 1
-    mean_attendance_rate = sum(s.attendance_rate for s in student_stats) / total_students
-
-    high_risk_count = sum(1 for s in student_stats if s.risk_level == "고위험")
-    warning_count = sum(
-        1 for s in student_stats if s.risk_level in ("고위험", "위험", "주의")
-    )
-
-    total_late = sum(s.late_count for s in student_stats)
-    late_rate = total_late / float(total_students * num_days) if num_days > 0 else 0.0
-
-    summary = AttendanceSummary(
-        attendance_rate=mean_attendance_rate,
-        total_students=total_students,
-        high_risk_count=high_risk_count,
-        warning_count=warning_count,
-        late_rate=late_rate,
-    )
-
-    report = AttendanceReport(
-        camp_id=camp.camp_id,
-        camp_name=camp.name,
-        target_date=target_date,
-        summary=summary,
-        students=student_stats,
-    )
-
+    # 5) AttendanceReport 객체 생성 (ruleset_id도 넣기)
+    report = None
     return report
 
 
+# ------------------------------------------------------------
+# 6) E. LLM 인사이트 레이어
+#   - 학생별 risk/pattern/trend/ops_action 채움
+#   - (이번 단계에서는 의사코드만)
+# ------------------------------------------------------------
+def _enrich_report_with_llm(
+    report: Any,
+    tendency_context: str,
+    students: List[Any],
+):
+    # for each student stat:
+    #   - 입력: stat + 성향 + 최근 n일 피처 요약
+    #   - 출력: risk_level, pattern_type, trend, ops_action
+    # report.summary.high_risk_count, warning_count 갱신
+    return report
+
+
+# ------------------------------------------------------------
+# 7) F. DM 자동화 레이어
+#   - DM 대상자 선정 -> 메시지 생성 -> dispatch 로그 저장
+# ------------------------------------------------------------
+def _plan_and_dispatch_dm(
+    db: Session,
+    camp_id: int,
+    target_dt: datetime,
+    report: Any,
+):
+    # 1) 대상자 선정:
+    #   - 오늘 LATE/EARLY_LEAVE/ABSENT
+    #   - risk_level 고위험/위험
+    #   - 연속 n일 공백(추가 규칙)
+    #
+    # 2) 각 대상자별 메시지 생성(LLM) - 성향 기반
+    # 3) attendance_dm_dispatch에 PLANNED로 저장
+    # 4) tool 실행(send_dm)하고 SENT/FAILED 업데이트
+    return
+
+
+# ------------------------------------------------------------
+# 메인 엔트리: generate_attendance_report
+# ------------------------------------------------------------
 def generate_attendance_report(
     camp_id: int,
     target_date: datetime,
     db: Session,
-) -> AttendanceReport:
+    mongo: Database,
+):
     """
-    출결 리포트 생성/갱신
-    - camp.start_date ~ target_date까지 누적 분석
+    최종 흐름(한 번에 끝)
+    A) context 로딩
+    B) ruleset 컴파일 보장
+    B-2) 학생별 판정
+    C) DB 저장
+    D) skeleton report 생성
+    E) LLM 인사이트 채움
+    - mongo AttendanceReport 업서트
+    F) DM 계획/발송
     """
-    camp: Camp = get_camp_by_id(db, camp_id)
 
-    if not hasattr(camp, "start_date") or camp.start_date is None:
-        raise ValueError("Camp.start_date가 설정되어 있지 않습니다.")
+    # A) context
+    context: AttendanceContext = _load_context(db, mongo, camp_id, target_date)
 
-    # target_date가 캠프 기간 밖이면 클램핑(선택)
-    if target_date < camp.start_date or target_date > camp.end_date:
-        # 필요하면 HTTPException 으로 올려도 되고, ValueError 로 두고 상위에서 처리해도 됨
-        raise ValueError(
-            f"target_date {target_date} is out of camp range "
-            f"({camp.start_date} ~ {camp.end_date})"
-        )
+    camp = context.camp
+    students = context.students
+    day_start = context.day_start
+    day_end = context.day_end
+    ruleset_doc = context.ruleset_doc
+    compiled_rules = ruleset_doc.get("compiled_rules") if ruleset_doc else {}
+    tendency_context = context.tendency_context
 
-    students: List[User] = get_students_by_camp(db, camp_id)
-    daily_rows = _fetch_daily_attendance_for_range(db, camp_id, camp.start_date, camp.end_date)
+    # B-2) 학생별 판정
+    daily_attendances = judge_attendance_for_students(db, camp_id, day_start, day_end, ruleset_doc)
 
-    report = _build_attendance_report_struct(
-        camp=camp,
+    # C) 저장
+    ruleset_id = str(ruleset_doc.get("_id")) if ruleset_doc else None
+    _persist_daily_results(db, camp_id, target_date, ruleset_id, daily_results)
+
+    # D) skeleton report
+    report = _build_skeleton_report(
+        db=db,
+        camp_id=camp_id,
+        camp_name=camp.name,
+        target_dt=target_date,
         students=students,
-        daily_rows=daily_rows,
-        target_date=target_date,
     )
+    # report.ruleset_id = ruleset_id
 
-    upsert_attendance_report(report)
+    # E) LLM 인사이트(선택)
+    # t
+    report = _enrich_report_with_llm(report, tendency_context, students)
+
+    # MongoDB: AttendanceReport upsert
+    # upsert_attendance_report(mongo, report)
+
+    # F) DM 계획/발송(선택)
+    _plan_and_dispatch_dm(db, camp_id, target_date, report)
+
     return report

@@ -127,6 +127,20 @@ class MeetingParticipant(Base):
 # session_activity_log
 # (접속/세션 상태 기록)
 # ------------------------
+class AttendanceType(Enum):
+    PRESENT = "PRESENT"
+    LATE = "LATE"
+    EARLY_LEAVE = "EARLY_LEAVE"
+    ABSENT = "ABSENT"
+    # 비정상적 활동 기록
+    UNNORMAL_ACTIVITY = "UNNORMAL_ACTIVITY"
+
+class AttendanceFeature(BaseModel):
+    total_active_time: Optional[int] = None
+    first_join: Optional[datetime] = None
+    last_leave: Optional[datetime] = None
+    never_joined: Optional[bool] = None
+
 class SessionActivityLog(Base):
     __tablename__ = "session_activity_log"
 
@@ -137,30 +151,49 @@ class SessionActivityLog(Base):
 
     user = relationship("User")
 
-attendance_status_enum = Enum(
-    "정상",
-    "지각",
-    "조퇴",
-    "결석",
-    "부분참여",
-    name="attendance_status_enum",
-)
-
-class DailyAttendance(Base):
-    __tablename__ = "daily_attendance"
+class AttendanceDailyAggregate(Base):
+    __tablename__ = "attendance_daily_aggregate"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    camp_id = Column(Integer, ForeignKey("camp.camp_id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
-    date = Column(Date, nullable=False)
+    camp_id = Column(Integer, nullable=False, index=True)
+    student_id = Column(Integer, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
 
-    total_minutes = Column(Integer, nullable=False)
-    morning_minutes = Column(Integer, nullable=False, default=0)   # 9–12
-    afternoon_minutes = Column(Integer, nullable=False, default=0) # 13–18
+    # PRESENT / LATE / EARLY_LEAVE / ABSENT
+    attendance_type = Column(AttendanceType, nullable=True, index=True)
+    attendance_features = Column(Text, nullable=True)
 
-    status = Column(attendance_status_enum, nullable=False)
-    note = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class AttendanceDMDispatch(Base):
+    __tablename__ = "attendance_dm_dispatch"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    camp_id = Column(Integer, nullable=False, index=True)
+    target_date = Column(Date, nullable=False, index=True)
+    student_id = Column(Integer, nullable=False, index=True)
+
+    # DM 트리거 사유(예: "late_today", "high_risk", "n_days_inactive")
+    trigger_reason = Column(String(50), nullable=False)
+
+    # 학생 위험도(리포트에서 산출한 값)
+    risk_level = Column(String(10), nullable=True)  # "고위험/위험/주의/정상" 등
+
+    channel = Column(String(20), nullable=False)    # "DISCORD"/"EMAIL"/"INAPP" 등
+    message = Column(Text, nullable=False)
+
+    # PLANNED / SENT / FAILED / SKIPPED
+    status = Column(String(20), nullable=False, default="PLANNED", index=True)
+
+    tool_run_id = Column(String(100), nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
 
 # ------------------------
 # STT Segment DB

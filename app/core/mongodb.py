@@ -335,36 +335,3 @@ register_mongo_model(
         ("generated_at", -1),
         ],
 )
-
-# =====================================
-# 3-5. 출결 리포트 모델 정의
-# =====================================
-class AttendanceSummary(BaseModel):
-    attendance_rate: float
-    total_students: int
-    high_risk_count: int
-    warning_count: int
-    late_rate: Optional[float] = None
-
-class AttendanceStudentStat(BaseModel):
-    student_id: int
-    name: str
-    attendance_rate: float
-    absent_count: int
-    late_count: int
-    early_leave_count: int
-    pattern_type: Optional[str] = None
-    risk_level: Literal["고위험", "위험", "주의", "정상"]
-    trend: Optional[float] = None
-    ops_action: Optional[str] = None
-
-class AttendanceReport(BaseModel):
-    camp_id: int
-    camp_name: str
-    target_date: datetime
-
-    summary: AttendanceSummary
-    students: List[AttendanceStudentStat]
-
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
