@@ -92,7 +92,7 @@ async def learning_chatbot_ws(websocket: WebSocket):
                 CHAT_SESSIONS[session_id].append(user_record)
                 
                 print(f"학습 쿼리 요청 : sessionId-{session_id} userId-{user_id} query-{query_text}")
-                assistant_reply = answer(query_text, grade)
+                assistant_reply = answer(query_text, grade, history=CHAT_SESSIONS[session_id] if session_id in CHAT_SESSIONS else [])
 
                 assistant_record = ChatMessage(
                     role="assistant",

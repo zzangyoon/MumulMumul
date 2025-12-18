@@ -58,13 +58,19 @@ GRADE_RULES = {
 """
 }
 
+# ==============================================================
+# 히스토리 포맷 함수
+# ==============================================================
+def format_history(history=[]):
+    if len(history) > 10:
+        history = history[-10:]
+    return "\n".join([f"{msg.role}: {msg.content}" for msg in history])
+
+
 
 # ==============================================================
 # RAG 체인 초기화
 # ==============================================================
-
-
-
 def initialize_rag_chain():
     logger.info("🔧 initialize_rag_chain() 실행 시작")
 
@@ -90,6 +96,7 @@ def initialize_rag_chain():
         당신은 부트캠프 학생을 위한 학습 도우미 챗봇입니다.
         답변은 반드시 제공된 [Context] 안의 정보만 사용해야 합니다.
         문서에 없는 내용은 절대 지어내지 마세요.
+        [History]는 이전 대화 내역입니다. 필요 시 참고하세요.
         [FORMAT] 형식에 맞게 답변하세요.
 
         [FORMAT]
@@ -111,6 +118,9 @@ def initialize_rag_chain():
         [Question]
         {question}
         -------------------------
+
+        [History]
+        {history}
         """
 
         prompt = ChatPromptTemplate.from_template(template)
@@ -120,18 +130,19 @@ def initialize_rag_chain():
 
         logger.info("6) RAG 체인 최종 생성 완료")
 
+        # history 포맷 함수인 체인에 추가 코드
         rag_chain = (
             {
                 "context": itemgetter("question") | retriever,
                 "question": itemgetter("question"),
                 "grade": itemgetter("grade"),
                 "grade_rules": itemgetter("grade_rules"),
+                "history": lambda inputs: format_history(inputs.get("history", [])),
             }
             | prompt
             | model
             | StrOutputParser()
         )
-
         return rag_chain
 
     except Exception as e:
@@ -145,7 +156,7 @@ def initialize_rag_chain():
 
 rag_chain = initialize_rag_chain()
 
-def answer(question, grade="중급"):
+def answer(question, grade="중급", history=[]):
     logger.info(f"💬 answer() 호출됨 | question='{question}', grade='{grade}'")
 
     if grade not in GRADE_RULES:
@@ -160,7 +171,8 @@ def answer(question, grade="중급"):
         result = rag.invoke({
             "question": question,
             "grade": grade,
-            "grade_rules": GRADE_RULES[grade]
+            "grade_rules": GRADE_RULES[grade],
+            "history": history,
         })
 
         logger.info("✅ answer() 응답 생성 완료")
