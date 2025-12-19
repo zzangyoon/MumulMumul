@@ -39,7 +39,7 @@ def build_feedback_report(
     result: FinalizePayload = run_feedbackboard_pipeline(rows, 
                                                          camp_id=camp_id, 
                                                          week=week_index, 
-                                                         category_template=["운영", "커리큘럼", "프로젝트", "공간", "기타"],
+                                                         category_template=["운영", "커리큘럼", "프로젝트", "학습", "팀"],
                                                          )
 
     return {
