@@ -11,7 +11,7 @@ from app.core.db import get_db
 from app.core.mongodb import get_mongo_db
 
 from app.core.schemas import User, ChatRoom, ChatRoomUser
-from app.core.timezone import datetime_to_custom_str, datetime_to_iso_milliseconds
+from app.core.timezone import datetime_to_custom_str, datetime_to_iso_milliseconds, utc_to_kst
 
 mongo_db = get_mongo_db()
 collection = mongo_db["team_chat_messages"]
@@ -170,7 +170,7 @@ def get_team_chat_messages(
                 userName=doc.get("userName", ""),
                 message=doc["message"],
                 createdAt=datetime_to_iso_milliseconds(doc["createdAt"]),
-                formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
+                formattedCreatedAt=datetime_to_custom_str(utc_to_kst(doc["createdAt"]))
             ))
         
 
@@ -236,7 +236,7 @@ def post_team_chat_message(
         userName=user.name,
         message=payload.message,
         createdAt=payload.createdAt,
-        formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
+        formattedCreatedAt=datetime_to_custom_str(utc_to_kst(doc["createdAt"]))
     )
 
 

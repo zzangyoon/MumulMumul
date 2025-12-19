@@ -36,6 +36,12 @@ def isoformat_to_datetime(iso_str: str) -> datetime:
         dt = settings.TIMEZONE.localize(dt)
     return dt
 
+def utc_to_kst(dt: datetime) -> datetime:
+    """UTC datetime → KST datetime"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(settings.TIMEZONE)
+
 def datetime_to_custom_str(dt: datetime) -> str:
     """
     datetime 객체를 특정 포맷의 문자열로 변환 > 2025년 12월 31일 오후 11:59분 59초)"""
