@@ -91,6 +91,7 @@ def create_session_activity_log(db: Session, user: User):
     세션 활동 로그 기록 추가
     """
     log = SessionActivityLog(
+        camp_id=user.camp_id,
         user_id=user.user_id,
         date=datetime.utcnow().date(),
         join_at=datetime.utcnow()
