@@ -15,9 +15,10 @@ class AttendanceFeature(BaseModel):
     never_joined: Optional[bool] = None
 
 class AttendanceResult(BaseModel):
-    student_id: int
-    attendance_type: AttendanceType
-    features: AttendanceFeature
+    user_id: int
+    attendance_type: AttendanceType = "UNKNOWN"
+    features: AttendanceFeature | None = None
+    is_finalized: bool = False  # 최종 확정 여부
 
 class AttendanceSummary(BaseModel):
     attendance_rate: float
@@ -25,16 +26,17 @@ class AttendanceSummary(BaseModel):
     late_rate: float = None
     high_risk_count: Optional[int] = None
     warning_count: Optional[int] = None
+    unknown_count: Optional[int] = None
 
 class AttendanceStudentStat(BaseModel):
-    student_id: int
+    user_id: int
     name: str
     attendance_rate: float
     absent_count: int
     late_count: int
     early_leave_count: int
     personality_type: str = None
-    attendance_records: List[Dict[str, AttendanceType]] = None  # 날짜별 출결유형 요약
+    attendance_records: List[Dict[str, str]] = None  # 날짜별 출결유형 요약
     recent_30_attendance_summary: str = None  # 최근 30일 “P/L/E/A” 요약,
     consecutive_absent_days: int = None,
     consecutive_late_days: int = None,
@@ -49,7 +51,8 @@ class AttendanceStudentStat(BaseModel):
         "정상",
         "미확인",
     ] = Field(
-        description="학생의 출결 위험 수준"
+        description="학생의 출결 위험 수준",
+        default="미확인",
     )
 
     pattern_type: Literal[
@@ -62,7 +65,8 @@ class AttendanceStudentStat(BaseModel):
         "신규",
         "데이터없음",
     ] = Field(
-        description="학생의 주요 출결 패턴 유형"
+        description="학생의 주요 출결 패턴 유형",
+        default="데이터없음",
     )
 
     trend: float = Field(
@@ -70,11 +74,13 @@ class AttendanceStudentStat(BaseModel):
             "최근 출결 추세 변화 값. "
             "양수는 개선(+), 음수는 악화(-), 0에 가까울수록 변화 없음. "
             "예: -0.25, 0.1"
-        )
+        ),
+        default=0.0,
     )
 
     ops_action: str = Field(
-        description="운영진이 취해야 할 권장 조치 또는 커뮤니케이션 가이드"
+        description="운영진이 취해야 할 권장 조치 또는 커뮤니케이션 가이드",
+        default="",
     )
 
 class AttendanceReport(BaseModel):
@@ -83,7 +89,7 @@ class AttendanceReport(BaseModel):
     target_date: datetime
 
     summary: AttendanceSummary
-    students: List[AttendanceStudentStat]
+    students_stat: List[AttendanceStudentStat]
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -106,17 +112,7 @@ register_mongo_model(
 # -----------------------------
 # 1) Ruleset Pydantic (최소 필드만)
 # -----------------------------
-class TimeWindow(BaseModel):
-    name: str = "EXCLUDE"
-    start: datetime
-    end: datetime
-
-class AttendanceRuleset(BaseModel):
-    raw_text: str = Field(
-        default="",
-        description="운영진이 입력한 원본 출결 규칙 텍스트",
-    )
-
+class CompileRuleset(BaseModel):
     full_day_minutes: int = Field(
         default=480,
         description="하루 출결 인정 기준 총 활동 시간 (분)",
@@ -153,6 +149,15 @@ class AttendanceRuleset(BaseModel):
         description="수료를 위한 최소 출석률 (전체 참여일 기준, 0~1 사이 값)")
     participation_days_weekdays_only: bool = True
     participation_days_exclude_holidays: bool = True
+
+class AttendanceRuleset(BaseModel):
+    ruleset_id: str
+    camp_id: int
+    raw_text: str
+    compiled_rules: CompileRuleset
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 # MeetingSummary 모델 등록
 register_mongo_model(

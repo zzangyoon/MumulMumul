@@ -207,7 +207,7 @@ def build_attendance_reports_for_camp(session, camp: Camp) -> List[Dict]:
 
             students_stats.append(
                 {
-                    "student_id": uid,
+                    "user_id": uid,
                     "name": u.name,
                     "attendance_rate": attendance_rate,
                     "absent_count": absent_days,

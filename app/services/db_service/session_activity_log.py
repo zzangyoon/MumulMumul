@@ -26,6 +26,43 @@ def get_session_activity_logs_for_camp_today(
     )
     return logs
 
+def get_all_session_activity_logs_for_camp(
+    db: Session,
+    camp_id: int,
+) -> List[SessionActivityLog]:
+    """
+    특정 캠프의 모든 SessionActivityLog 레코드를 조회합니다
+    """
+    logs: List[SessionActivityLog] = (
+        db.query(SessionActivityLog)
+        .join(User, SessionActivityLog.user_id == User.user_id)
+        .filter(
+            User.camp_id == camp_id,
+        )
+        .all()
+    )
+    return logs
+
+# 특정 날짜 이전의 특정 유저 세션 활동 로그를 모두 가져옵니다.
+def get_session_activity_logs_for_user_before_date(
+    db: Session,
+    user_id: int,
+    target_dt: datetime,
+) -> List[SessionActivityLog]:
+    """
+    특정 유저의 target_dt 이전 날짜의 SessionActivityLog 레코드를 모두 조회합니다
+    """
+    logs: List[SessionActivityLog] = (
+        db.query(SessionActivityLog)
+        .join(User, SessionActivityLog.user_id == User.user_id)
+        .filter(
+            User.user_id == user_id,
+            SessionActivityLog.join_at < target_dt,
+        )
+        .all()
+    )
+    return logs
+
 def get_session_activity_logs_for_user_today(
     db: Session,
     user_id: int,
@@ -55,6 +92,7 @@ def create_session_activity_log(db: Session, user: User):
     """
     log = SessionActivityLog(
         user_id=user.user_id,
+        date=datetime.utcnow().date(),
         join_at=datetime.utcnow()
     )
     db.add(log)
@@ -63,7 +101,7 @@ def create_session_activity_log(db: Session, user: User):
     print(f"User {user.user_id} logged in at {log.join_at}")
 
 # 로그아웃 처리
-def update_leave_time(db: Session, userId: int)
+def update_leave_time(db: Session, userId: int):
     """
     로그아웃 처리 + SessionActivityLog 기록 업데이트
     """

@@ -45,7 +45,9 @@ def dt(d: date, hh: int, mm: int = 0) -> datetime:
 
 def add_log(db: Session, user_id: int, d: date, join_h: int, join_m: int, leave_h: int, leave_m: int):
     row = SessionActivityLog(
+        camp_id=CAMP_ID,
         user_id=user_id,
+        date=d,
         join_at=dt(d, join_h, join_m),
         leave_at=dt(d, leave_h, leave_m),
     )

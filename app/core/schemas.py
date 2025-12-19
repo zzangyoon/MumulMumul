@@ -13,8 +13,8 @@ from sqlalchemy import (
     Boolean,
     ForeignKey,
     Float,
-    Enum
 )
+from enum import Enum
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 Base = declarative_base()
@@ -62,7 +62,7 @@ class User(Base):
     camp_id = Column(Integer, ForeignKey("camp.camp_id"), nullable=True)
 
     tendency_completed = Column(Integer, nullable=False, default=0)  # 0 or 1
-    tendency_type_code = Column(String(50), nullable=True)
+    tendency_type_code = Column(String(50), nullable=True, default=None)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
@@ -129,19 +129,22 @@ class MeetingParticipant(Base):
 # session_activity_log
 # (접속/세션 상태 기록)
 # ------------------------
-class AttendanceType(Enum):
+class AttendanceType(str, Enum):
     ON_TIME = "ON_TIME"
     LATE = "LATE"
     EARLY_LEAVE = "EARLY_LEAVE"
     ABSENT = "ABSENT"
-    # 비정상적 활동 기록
     UNNORMAL_ACTIVITY = "UNNORMAL_ACTIVITY"
+    # 아직 알수없는 상태
+    UNKNOWN = "UNKNOWN"
 
 class SessionActivityLog(Base):
     __tablename__ = "session_activity_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    camp_id = Column(Integer, nullable=False)
     user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+    date= Column(Date, nullable=False, default=datetime.utcnow().date())
     join_at = Column(DateTime, nullable=True) 
     leave_at = Column(DateTime, nullable=True) 
 
@@ -153,11 +156,12 @@ class AttendanceDaily(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     camp_id = Column(Integer, nullable=False, index=True)
-    student_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
     date = Column(Date, nullable=False, index=True)
+    is_finalized = Column(Boolean, nullable=False, default=False)
 
     # ON_TIME / LATE / EARLY_LEAVE / ABSENT
-    attendance_type = Column(AttendanceType, nullable=True, index=True)
+    attendance_type = Column(String(10), nullable=True, index=True)
     total_active_time= Column(Integer, nullable=True)  # 총 접속 시간 (분 단위)
     first_join= Column(DateTime, nullable=True)
     last_leave= Column(DateTime, nullable=True)

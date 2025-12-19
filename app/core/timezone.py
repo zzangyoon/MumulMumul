@@ -29,6 +29,13 @@ def format_datetime(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
         dt = settings.TIMEZONE.localize(dt)
     return dt.strftime(format_str)
 
+def isoformat_to_datetime(iso_str: str) -> datetime:
+    """ISO 8601 문자열 → datetime (timezone-aware)"""
+    dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = settings.TIMEZONE.localize(dt)
+    return dt
+
 def datetime_to_custom_str(dt: datetime) -> str:
     """
     datetime 객체를 특정 포맷의 문자열로 변환 > 2025년 12월 31일 오후 11:59분 59초)"""

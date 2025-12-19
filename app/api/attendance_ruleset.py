@@ -8,61 +8,51 @@ from pymongo.database import Database
 
 from app.core.mongodb import get_mongo_db
 from app.services.attendance.analysis_attendance_rule.llm import compile_ruleset_with_llm
+from app.services.attendance.schemas import AttendanceRuleset, CompileRuleset
 from app.services.db_service.attendance_ruleset import get_attendance_ruleset, save_attendance_ruleset
 
-router = APIRouter(prefix="/attendance/ruleset", tags=["attendance-ruleset"])
+router = APIRouter()
 
 
 class CreateRulesetRequest(BaseModel):
     camp_id: int
-    name: str = Field(default="출결 규칙")
     raw_rules_text: str
 
 
-class CreateRulesetResponse(BaseModel):
-    ruleset_id: str
-    is_active: bool
-    compiled_rules: Dict[str, Any]
 
-
-@router.get("/{camp_id}", response_model=Optional[CreateRulesetResponse])
+@router.get("/{camp_id}")
 def get_active_attendance_ruleset(
     camp_id: int,
     mongo: Database = Depends(get_mongo_db),
 ):
-    doc = get_attendance_ruleset(camp_id)
-    if not doc:
+    attendance_ruleset = get_attendance_ruleset(mongo, camp_id)
+    if not attendance_ruleset:
         return None
 
-    return CreateRulesetResponse(
-        ruleset_id=str(doc["_id"]),
-        is_active=bool(doc.get("is_active", True)),
-        compiled_rules=doc.get("compiled_rules", {}) or {},
-    )
+    return attendance_ruleset
 
 
-@router.post("", response_model=CreateRulesetResponse)
+@router.post("/generate")
 def create_attendance_ruleset(
     payload: CreateRulesetRequest,
     mongo: Database = Depends(get_mongo_db),
 ):
     try:
-        rules = compile_ruleset_with_llm(payload.raw_rules_text)
+        print("출결 규칙셋 LLM 컴파일 시작")
+        rules: CompileRuleset = compile_ruleset_with_llm(payload.raw_rules_text)
     except Exception as e:
+        print("출결 규칙셋 LLM 컴파일 실패")
         raise HTTPException(status_code=500, detail=str(e))
 
     try:
-        ruleset_id = save_attendance_ruleset(
+        print("출결 규칙셋 저장 중...")
+        attendance_ruleset = save_attendance_ruleset(
+            mongo,
             camp_id=payload.camp_id,
-            name=payload.name,
             raw_rules_text=payload.raw_rules_text,
-            compiled_rules=rules,
+            compiled_rules=rules.dict(),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    return CreateRulesetResponse(
-        ruleset_id=ruleset_id,
-        is_active=True,
-        compiled_rules=rules,
-    )
+    return attendance_ruleset

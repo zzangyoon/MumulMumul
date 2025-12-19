@@ -222,7 +222,7 @@ else:
 
     for idx, (_, row) in enumerate(top3.iterrows()):
         with cols[idx]:
-            name = row.get("name", f"학생 {row.get('student_id', '')}")
+            name = row.get("name", f"학생 {row.get('user_id', '')}")
             pattern = row.get("pattern_type", "")
             att_rate = row.get("attendance_rate", None)
             absent = row.get("absent_count", 0)
