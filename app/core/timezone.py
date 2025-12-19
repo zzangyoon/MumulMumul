@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from app.config import settings
 
 def get_current_timestamp() -> int:
@@ -37,10 +37,8 @@ def isoformat_to_datetime(iso_str: str) -> datetime:
     return dt
 
 def utc_to_kst(dt: datetime) -> datetime:
-    """UTC datetime → KST datetime"""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(settings.TIMEZONE)
+    """UTC datetime → KST datetime (timedelta 사용)"""
+    return dt + timedelta(hours=9)
 
 def datetime_to_custom_str(dt: datetime) -> str:
     """
@@ -49,3 +47,9 @@ def datetime_to_custom_str(dt: datetime) -> str:
 
 def datetime_to_iso_milliseconds(dt: datetime) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+if __name__ == "__main__":
+    utc_dt = datetime.utcnow()
+    kst_dt = utc_to_kst(utc_dt)
+    print("UTC datetime:", utc_dt)
+    print("KST datetime:", kst_dt)
