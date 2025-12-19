@@ -67,6 +67,10 @@ def topic_cluster_node(state: FeedbackBoardState,
     - input: state.posts (split/dedup/filter 완료 가정)
     - output: post.ai_analysis.category / sub_category 채움
     """
+    if state.posts is None:
+        state.errors.append("topic_cluster_node: state.posts is None")
+        return state
+    
     # ---- 0) 대상 추리기 (active + clean_text 있는 것만) ----
     posts = state.posts
 

@@ -26,7 +26,7 @@ from app.core.schemas import Camp, init_db
 from app.config import MONGO_URL, MONGO_DB_NAME, SQLITE_URL
 
 
-CSV_PATH = r"C:\Potenup\MumulMumul\app\sql\feedback_board_posts_dummy.csv"  # CSV 파일 경로
+CSV_PATH = r"C:\Potenup\MumulMumul\app\sql\feedback_posts_125.csv"  # CSV 파일 경로
 
 
 # ---------- 주차 기반 random datetime 생성 유틸 ----------

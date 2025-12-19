@@ -38,6 +38,7 @@ class FeedbackBoardInsight(BaseModel):
 
     # --------- 운영 대응 ---------
     action_type: Optional[Literal["immediate", "short", "long"]] = None
+    action_reason: Optional[str] = None
 
     # --------- 분석 메타 ---------
     analyzed_at: Optional[datetime] = None

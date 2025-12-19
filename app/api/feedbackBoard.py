@@ -68,6 +68,8 @@ async def get_feedback_report(camp_id: int, week_index: int, db: Session = Depen
         camp_id=camp_id,
         week=week_index,
     )
+    if not report:
+        return None
 
     return {
         "camp_id": report.camp_id,
