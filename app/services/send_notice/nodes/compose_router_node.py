@@ -1,9 +1,9 @@
 # app/services/send_notice/nodes/compose_messages_router_node.py
 from app.services.send_notice.schemas import MessagingAgentState
 
-def compose_messages_router_node(state: MessagingAgentState) -> str:
+def compose_router_node(state: MessagingAgentState) -> str:
     print("\n==============================")
-    print("[NODE] compose_messages_router_node START")
+    print("[NODE] compose_router_node START")
 
     if not state.parsed:
         raise ValueError("parsed is None")
@@ -19,6 +19,6 @@ def compose_messages_router_node(state: MessagingAgentState) -> str:
         raise ValueError(f"unsupported message_type: {message_type}")
 
     print("[ROUTER] next_node =", next_node)
-    print("[NODE] compose_messages_router_node END")
+    print("[NODE] compose_router_node END")
 
     return next_node

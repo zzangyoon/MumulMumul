@@ -1,6 +1,3 @@
-from pydantic import BaseModel, Field
-from typing import Literal, Optional
-
 import sys
 from pathlib import Path
 
@@ -14,9 +11,9 @@ from app.core.models import openai_chat_model
 from app.services.send_notice.schemas import MessagingAgentState, ComposeNoticeResult
 
 
-def compose_messages_node(state: MessagingAgentState) -> MessagingAgentState:
+def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:
     print("\n==============================")
-    print("[NODE] compose_messages_node START")
+    print("[NODE] compose_notice_node START")
 
     try:
         if not state.parsed:
@@ -72,20 +69,20 @@ def compose_messages_node(state: MessagingAgentState) -> MessagingAgentState:
 
         composed: ComposeNoticeResult = result["structured_response"]
 
-        print("[LLM] compose_messages_node structured_response =")
+        print("[LLM] compose_notice_node structured_response =")
         print(composed.model_dump())
 
         # state 반영
         state.notice_message = composed
         state.error = None
 
-        print("[STATE] message_text length =", len(state.message_text or ""))
-        print("[NODE] compose_messages_node END")
+        print("[STATE] message_text length =", len(composed.message_text or ""))
+        print("[NODE] compose_notice_node END")
         return state
 
     except Exception as e:
-        print("[ERROR] compose_messages_node failed")
+        print("[ERROR] compose_notice_node failed")
         print(e)
-        state.error = f"compose_messages_node failed: {e}"
-        state.message_text = None
+        state.error = f"compose_notice_node failed: {e}"
+        state.notice_message = None
         return state

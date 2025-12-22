@@ -25,10 +25,7 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
         if parsed.message_type == "notice":
             print("[DISPATCH] notice mode")
             for user_id in state.target_user_ids:
-                result = dispatch_stub(
-                    user_id=user_id,
-                    message_text=state.notice_message.message_text,
-                )
+                result = dispatch_stub.invoke({"user_id": user_id, "message_text": state.notice_message.message_text})
                 results.append(result)
 
         # DM 전송
@@ -38,10 +35,7 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
                 raise ValueError("dm_messages is empty")
 
             for dm in state.dm_messages:
-                result = dispatch_stub(
-                    user_id=dm.user_id,
-                    message_text=dm.message_text,
-                )
+                result = dispatch_stub.invoke({"user_id": user_id, "message_text": dm.message_text})
                 results.append(result)
 
         else:
