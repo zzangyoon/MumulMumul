@@ -1,4 +1,4 @@
-# app/services/send_notice/nodes/dispatch_and_log_node.py
+# app/services/send_dispatch/nodes/dispatch_and_log_node.py
 import sys
 from pathlib import Path
 
@@ -6,8 +6,8 @@ CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[4]
 sys.path.append(str(ROOT_DIR))
 
-from app.services.send_notice.schemas import MessagingAgentState
-from app.tools.dispatch_tools import dispatch_stub
+from app.services.send_dispatch.schemas import MessagingAgentState
+from app.tools.dispatch_tools import dispatch_stub, dispatch_websocket_dm, dispatch_websocket_notice
 
 
 def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
@@ -25,7 +25,7 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
         if parsed.message_type == "notice":
             print("[DISPATCH] notice mode")
             for user_id in state.target_user_ids:
-                result = dispatch_stub.invoke({"user_id": user_id, "message_text": state.notice_message.message_text})
+                result = dispatch_websocket_notice.invoke({"user_id": user_id, "message_text": state.notice_message.message_text})
                 results.append(result)
 
         # DM 전송
@@ -35,7 +35,7 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
                 raise ValueError("dm_messages is empty")
 
             for dm in state.dm_messages:
-                result = dispatch_stub.invoke({"user_id": user_id, "message_text": dm.message_text})
+                result = dispatch_websocket_dm.invoke({"user_id": user_id, "message_text": dm.message_text})
                 results.append(result)
 
         else:

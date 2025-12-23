@@ -8,7 +8,7 @@ sys.path.append(str(ROOT_DIR))
 from langchain.agents import create_agent
 
 from app.core.models import openai_chat_model
-from app.services.send_notice.schemas import MessagingAgentState, ComposeNoticeResult
+from app.services.send_dispatch.schemas import MessagingAgentState, ComposeNoticeResult
 
 
 def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:

@@ -1,9 +1,9 @@
-# app/services/send_notice/graph.py
+# app/services/send_dispatch/graph.py
 import sys
 from pathlib import Path
 
 CURRENT_FILE = Path(__file__).resolve()
-ROOT_DIR = CURRENT_FILE.parents[3]  # .../app/services/send_notice/graph.py 기준
+ROOT_DIR = CURRENT_FILE.parents[3]  # .../app/services/send_dispatch/graph.py 기준
 sys.path.append(str(ROOT_DIR))
 
 import asyncio
@@ -11,27 +11,27 @@ from datetime import datetime
 
 from langgraph.graph import StateGraph, END
 
-from app.services.send_notice.schemas import (
+from app.services.send_dispatch.schemas import (
     MessagingAgentState,
     ParsedMessagingRequest,
 )
 
 # --- Nodes ---
-from app.services.send_notice.nodes.parse_request_node import parse_request_node
-from app.services.send_notice.nodes.select_targets_node import select_targets_node
+from app.services.send_dispatch.nodes.parse_request_node import parse_request_node
+from app.services.send_dispatch.nodes.select_targets_node import select_targets_node
 
 # 라우터: message_type -> 다음 노드 key 반환(str)
-from app.services.send_notice.nodes.compose_router_node import compose_router_node
+from app.services.send_dispatch.nodes.compose_router_node import compose_router_node
 
 # 메시지 생성 노드들
-from app.services.send_notice.nodes.compose_notice_node import compose_notice_node
-from app.services.send_notice.nodes.compose_dm_node import compose_dm_node
+from app.services.send_dispatch.nodes.compose_notice_node import compose_notice_node
+from app.services.send_dispatch.nodes.compose_dm_node import compose_dm_node
 
 # dispatch (websocket 지원하려면 async 권장)
-from app.services.send_notice.nodes.dispatch_and_log_node import dispatch_and_log_node
+from app.services.send_dispatch.nodes.dispatch_and_log_node import dispatch_and_log_node
 
 
-def build_send_notice_graph():
+def build_send_dispatch_graph():
     """
     Flow:
       parse_request
@@ -87,7 +87,7 @@ def build_send_notice_graph():
 # Test (하단 테스트 코드)
 # ------------------------------------------------------------
 if __name__ == "__main__":
-    app = build_send_notice_graph()
+    app = build_send_dispatch_graph()
 
     # ✅ 테스트 1) notice (camp_all)
     test_state_notice = MessagingAgentState(
