@@ -2,7 +2,7 @@
 from typing import Any, List, Dict
 from langchain_core.tools import tool
 
-from app.core import ws_manager
+from app.realtime import ws_manager
 
 @tool
 def dispatch_stub(user_id: int, message_text: str) -> Dict:
@@ -30,5 +30,6 @@ async def dispatch_websocket_dm(user_id: int, message_text: str, message_id: str
             "text": message_text,
         }
     }
+    # 
     print(f"[WS DISPATCH] dm user_id={user_id} message_id={message_id}")
     return await ws_manager.send_to_user(user_id, payload)

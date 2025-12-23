@@ -23,7 +23,7 @@ def main() -> int:
         "--port",
         "8020",
     ]
-    
+
     
 
     print("Starting uvicorn and streamlit...")
