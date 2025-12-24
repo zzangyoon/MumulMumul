@@ -120,7 +120,10 @@ def confirm_message(
     # 이미 확인했으면 idempotent
     if not mr.is_confirmed:
         mr.is_confirmed = True
-        mr.confirmed_at = datetime.now(timezone.utc)
+        mr.confirmed_at = datetime.utcnow()
         db.commit()
 
     return {"ok": True, "messageId": payload.messageId}
+
+# -------------------------
+# 3) 

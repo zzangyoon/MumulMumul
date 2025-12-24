@@ -20,7 +20,8 @@ from app.api.learning_chatbot import router as learning_chatbot_router
 from app.api.learning_quiz import router as learning_quiz_router
 from app.api.feedbackBoard import router as feedback_router
 from app.api.camp import router as camp_router
-from app.api.send_dispatch import router as send_dispatch_router
+from app.api.dispatch_recipient import router as recieve_dispatch_router
+from app.api.dispatch_sender import router as send_dispatch_router
 from app.core.mongodb import init_mongo, get_mongo_db
 from app.core.schemas import init_db
 from app.config import SQLITE_URL
@@ -82,6 +83,7 @@ app.include_router(learning_quiz_router, prefix="/learning_quiz")
 app.include_router(feedback_router, prefix="/feedback")
 app.include_router(camp_router, prefix="/camps")
 app.include_router(attendance_ruleset_router, prefix="/attendance_ruleset")
+app.include_router(recieve_dispatch_router, prefix="/dispatch")
 app.include_router(send_dispatch_router, prefix="/dispatch")
 
 from app.realtime.register_handlers import register_all

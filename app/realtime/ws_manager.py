@@ -77,8 +77,8 @@ class WebSocketManager:
         if not ws:
             print(f"[WS] send_to_user failed (offline) user_id={user_id}")
             return False
-
-        await ws.send_text(json.dumps({"domain": domain, "event": event, "payload": payload}, ensure_ascii=False))
+    
+        await ws.send_json({"domain": domain, "event": event, "payload": payload})
         print(f"[WS] pushed to user_id={user_id} domain={domain} event={event}")
         return True
 

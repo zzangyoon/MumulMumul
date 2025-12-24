@@ -19,9 +19,6 @@ async def ack(websocket: WebSocket, state: ClientState, payload: Dict[str, Any])
     user_id = state.user_id
     print(f"[Dispatch][ACK] user_id={user_id} payload={payload}")
 
-    # TODO: 필요하면 DB 저장
-    # save_dispatch_ack(user_id, payload)
-
     return {
         "domain": "dispatch",
         "event": "ack_ok",

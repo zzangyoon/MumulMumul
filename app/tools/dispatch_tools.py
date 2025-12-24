@@ -4,7 +4,7 @@ from datetime import datetime
 
 from langchain_core.tools import tool
 
-from app.realtime import ws_manager
+from app.realtime.ws_manager import ws_manager
 from app.core.db import get_db
 from app.core.schemas import Message, MessageRecipient
 
@@ -33,7 +33,8 @@ async def dispatch_websocket_dm(
     """
     WebSocket으로 개인 DM 전송 + DB 저장
     """
-    db = get_db()
+    db_gen = get_db()
+    db = next(db_gen)
     try:
         # 1) Message 저장
         message = Message(
@@ -59,24 +60,20 @@ async def dispatch_websocket_dm(
         db.commit()
 
         payload = {
-            "domain": "dispatch",
-            "event": "dm",
-            "payload": {
                 "messageId": message.id,
                 "recipientId": user_id,
                 "campId": camp_id,
                 "senderId": sender_id,
                 "title": None,
                 "text": message_text,
-                "createdAt": message.created_at,
+                "createdAt": message.created_at.isoformat(),
                 "needConfirmation": is_need_confirmation,
                 "isConfirmed": False,
                 "confirmedAt": None,
-            },
-        }
+            }
 
         print(f"[WS DISPATCH] dm user_id={user_id} messageId={message.id}")
-        return await ws_manager.send_to_user(user_id, payload)
+        return await ws_manager.send_to_user(user_id, domain="dispatch", event="dm", payload=payload)
 
     except Exception as e:
         db.rollback()
@@ -100,7 +97,8 @@ async def dispatch_websocket_notice(
     - Message 1개
     - MessageRecipient N개
     """
-    db = get_db()
+    db_gen = get_db()
+    db = next(db_gen)
     try:
         # 1) Message 저장 (공지 원본 1개)
         message = Message(
@@ -131,22 +129,18 @@ async def dispatch_websocket_notice(
         # 3) 각 유저에게 WS push
         for user_id in target_user_ids:
             payload = {
-                "domain": "dispatch",
-                "event": "notice",
-                "payload": {
                     "messageId": message.id,
                     "recipientId": user_id,
                     "campId": camp_id,
                     "senderId": sender_id,
                     "title": title,
                     "text": message_text,
-                    "createdAt": message.created_at,
+                    "createdAt": message.created_at.isoformat(),
                     "needConfirmation": is_need_confirmation,
                     "isConfirmed": False,
                     "confirmedAt": None,
-                },
-            }
-            await ws_manager.send_to_user(user_id, payload)
+                }
+            await ws_manager.send_to_user(user_id, domain="dispatch", event="notice", payload=payload)
 
         print(
             f"[WS DISPATCH] notice camp_id={camp_id} "
