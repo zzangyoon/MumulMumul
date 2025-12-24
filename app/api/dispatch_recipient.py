@@ -42,8 +42,6 @@ class DispatchHistoryResponse(BaseModel):
 @router.get("/history", response_model=DispatchHistoryResponse)
 def get_dispatch_history(
     userId: int = Query(...),
-    limit: int = Query(200, ge=1, le=1000),
-    beforeMessageRecipientId: Optional[int] = Query(None, description="페이징용(옵션)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -58,13 +56,8 @@ def get_dispatch_history(
         .filter(MessageRecipient.recipient_id == userId)
     )
 
-    # 옵션 페이징: 더 오래된 것(무한스크롤) 땡길 때 사용
-    if beforeMessageRecipientId is not None:
-        q = q.filter(MessageRecipient.id < beforeMessageRecipientId)
-
     rows = (
         q.order_by(desc(MessageRecipient.id))
-        .limit(limit)
         .all()
     )
 
@@ -88,7 +81,6 @@ def get_dispatch_history(
                 )
             )
         )
-
     return DispatchHistoryResponse(items=items)
 
 

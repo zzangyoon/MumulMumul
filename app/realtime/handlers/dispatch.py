@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 
 from fastapi import WebSocket
 
+from app.core.db import get_db
+from app.core.schemas import MessageRecipient
 from app.realtime.ws_manager import ClientState
 
 
@@ -17,6 +19,28 @@ async def ack(websocket: WebSocket, state: ClientState, payload: Dict[str, Any])
       }
     """
     user_id = state.user_id
+
+    db_gen = get_db()
+    db = next(db_gen)
+
+    mr = (
+        db.query(MessageRecipient)
+        .filter(MessageRecipient.recipient_id == payload.userId)
+        .filter(MessageRecipient.message_id == payload.messageId)
+        .first()
+    )
+    if mr is None:
+        print(f"[Dispatch][ACK] 존재 하지 않는 메세지 user_id={user_id} payload={payload}")
+        return None
+
+    # 이미 확인했으면 idempotent
+    if not mr.is_confirmed:
+        mr.is_confirmed = True
+        mr.confirmed_at = datetime.now(timezone.utc)
+        db.commit()
+    else:
+        print(f"[Dispatch][ACK] 이미 확인한 메세지 user_id={user_id} payload={payload}")
+
     print(f"[Dispatch][ACK] user_id={user_id} payload={payload}")
 
     return {
