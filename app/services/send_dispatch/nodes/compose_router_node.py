@@ -1,5 +1,5 @@
-# app/services/send_notice/nodes/compose_messages_router_node.py
-from app.services.send_notice.schemas import MessagingAgentState
+# app/services/send_dispatch/nodes/compose_messages_router_node.py
+from app.services.send_dispatch.schemas import MessagingAgentState
 
 def compose_router_node(state: MessagingAgentState) -> str:
     print("\n==============================")

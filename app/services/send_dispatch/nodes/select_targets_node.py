@@ -1,4 +1,4 @@
-# app/services/send_notice/nodes/select_targets_node.py
+# app/services/send_dispatch/nodes/select_targets_node.py
 import sys
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from langchain.agents import create_agent
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.models import openai_chat_model
-from app.services.send_notice.schemas import MessagingAgentState, ParsedMessagingRequest, SelectTargetsResult
+from app.services.send_dispatch.schemas import MessagingAgentState, ParsedMessagingRequest, SelectTargetsResult
 
 from app.tools.db_tools import (
     get_camp_id_by_name,
@@ -23,7 +23,7 @@ from app.tools.db_tools import (
 )
 
 import json
-from app.services.send_notice.schemas import SelectTargetsResult
+from app.services.send_dispatch.schemas import SelectTargetsResult
 
 def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
     print("\n==============================")

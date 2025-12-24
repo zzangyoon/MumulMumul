@@ -15,5 +15,5 @@ def drop_camp_table(table_name, db_url="sqlite:///storage/mumul.db"):
         conn.commit()
         print(f"{table_name} 테이블 삭제 완료")
 
-drop_camp_table("attendance_daily")
-drop_camp_table("session_activity_log")
+drop_camp_table("notice_log")
+drop_camp_table("notice_confirmation")

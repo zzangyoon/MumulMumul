@@ -12,7 +12,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.models import openai_chat_model
-from app.services.send_notice.schemas import MessagingAgentState, ParsedMessagingRequest
+from app.services.send_dispatch.schemas import MessagingAgentState, ParsedMessagingRequest
 
 def build_parse_request_chain(llm):
     parser = PydanticOutputParser(pydantic_object=ParsedMessagingRequest)
