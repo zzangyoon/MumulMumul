@@ -1,4 +1,4 @@
-# app/services/send_notice/nodes/compose_dm_node.py
+# app/services/send_dispatch/nodes/compose_dm_node.py
 import sys
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from typing import List
 from langchain.agents import create_agent
 
 from app.core.models import openai_chat_model
-from app.services.send_notice.schemas import ComposeDM, MessagingAgentState, ComposeDMResult
+from app.services.send_dispatch.schemas import ComposeDM, MessagingAgentState, ComposeDMResult
 
 
 def compose_dm_node(state: MessagingAgentState) -> MessagingAgentState:
