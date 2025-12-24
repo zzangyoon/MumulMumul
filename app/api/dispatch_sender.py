@@ -33,7 +33,7 @@ async def send_dispatch(
     # is_need_confirmation: bool = False,
     result = await dispatch_websocket_dm.ainvoke({
         "user_id": 5,
-        "message_text": "QR코드 출결을 꼭 확인해주세요!",
+        "message_text": payload.request_text,
         "camp_id": 1,
         "sender_id": 1,
         "is_need_confirmation": False,
