@@ -7,6 +7,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from operator import itemgetter
 
+from app.core.models import openai_chat_model
+
 # ==============================================================
 # 로깅 설정
 # ==============================================================
@@ -155,7 +157,7 @@ def initialize_rag_chain():
         prompt = ChatPromptTemplate.from_template(template)
 
         logger.info("5) LLM 모델 로딩 중...")
-        model = ChatOpenAI(model=LLM_MODEL, temperature=0.2)
+        model = openai_chat_model()
 
         logger.info("6) RAG 체인 최종 생성 완료")
 

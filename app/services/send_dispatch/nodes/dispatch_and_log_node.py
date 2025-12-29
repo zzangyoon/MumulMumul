@@ -10,7 +10,7 @@ from app.services.send_dispatch.schemas import MessagingAgentState
 from app.tools.dispatch_tools import dispatch_stub, dispatch_websocket_dm, dispatch_websocket_notice
 
 
-def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
+async def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
     print("\n==============================")
     print("[NODE] dispatch_and_log_node START")
 
@@ -24,9 +24,10 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
         # 공지 전송
         if parsed.message_type == "notice":
             print("[DISPATCH] notice mode")
-            for user_id in state.target_user_ids:
-                result = dispatch_websocket_notice.invoke({"user_id": user_id, "message_text": state.notice_message.message_text})
-                results.append(result)
+            camp_id = state.camp_id
+            target_user_ids = state.target_user_ids
+            result = await dispatch_websocket_notice.ainvoke({"camp_id": camp_id, "target_user_ids": target_user_ids, "title": state.notice_message.title,  "message_text": state.notice_message.message_text, "sender_id": 1, "is_need_confirmation": True})
+            results.append(result)
 
         # DM 전송
         elif parsed.message_type == "dm":
@@ -35,7 +36,7 @@ def dispatch_and_log_node(state: MessagingAgentState) -> MessagingAgentState:
                 raise ValueError("dm_messages is empty")
 
             for dm in state.dm_messages:
-                result = dispatch_websocket_dm.invoke({"user_id": user_id, "message_text": dm.message_text})
+                result = await dispatch_websocket_dm.ainvoke({"user_id": dm.user_id, "message_text": dm.message_text, "camp_id": state.camp_id, "sender_id": 1, "is_need_confirmation": False})
                 results.append(result)
 
         else:

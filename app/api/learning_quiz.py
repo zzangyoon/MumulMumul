@@ -53,6 +53,7 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
             context += "[학생들이 어려워하는 내용]\n" + curriculum_report['ai_insights']['hardest_part_summary']
 
         logger.info(f"[커리큘럼 리포트 기반 컨텍스트 획득] camp_id: {camp_id}, week_index: {week_index}")
+        logger.info(f"[컨텍스트 내용] {context}")
         result = create_quiz(context, grade)
         logger.info(f"[학습 퀴즈 생성 성공] user_id: {user_id}, grade: {grade}, quiz_count: {len(result.quiz)}")
         return result

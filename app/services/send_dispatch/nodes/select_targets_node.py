@@ -93,6 +93,7 @@ def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
 
         print("[STATE] camp_id =", state.camp_id)
         print("[STATE] target_user_ids count =", len(state.target_user_ids))
+        print("[STATE] target_user_ids", state.target_user_ids)
         print("[NODE] select_targets_node END")
 
         return state

@@ -37,4 +37,5 @@ dependencies = [
     "pytz>=2025.2",
     "noisereduce>=3.0.3",
     "kiwipiepy>=0.22.2",
+    "wordcloud>=1.9.5",
 ]
