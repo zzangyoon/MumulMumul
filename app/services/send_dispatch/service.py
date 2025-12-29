@@ -75,6 +75,6 @@ async def confirm_dispatch(
     graph = build_preview_dispatch_graph()
     cmd = Command(resume={"approved": approved, "edited_text": edited_text})
    
-    result = await graph.ainvoke(cmd, config=config})
+    result = await graph.ainvoke(cmd, config=config)
     
     return result
