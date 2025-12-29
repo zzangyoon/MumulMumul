@@ -24,6 +24,12 @@ def upsert_curriculum_config(
 
     if "created_at" in update_doc:
         del update_doc["created_at"]
+    
+    # 만약 raw_text 필드가 없다면 기존 문서에서 가져와서 유지
+    if "raw_text" not in update_doc:
+        existing_doc = curriculum_col.find_one({"camp_id": camp_id}, {"raw_text": 1})
+        if existing_doc and "raw_text" in existing_doc:
+            update_doc["raw_text"] = existing_doc["raw_text"]
 
     curriculum_col.update_one(
         {"camp_id": camp_id},

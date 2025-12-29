@@ -194,6 +194,10 @@ class CurriculumConfig(BaseModel):
         description="주차별 커리큘럼 구조",
     )
 
+    raw_text: Optional[str] = Field(
+        None,   description="커리큘럼 텍스트 원본 (자동 분석 시 사용됨)",
+    )
+
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
