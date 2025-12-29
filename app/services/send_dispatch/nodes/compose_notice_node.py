@@ -46,11 +46,10 @@ def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:
                 "작성 규칙:\n"
                 "- 한국어로 작성\n"
                 "- 한 번에 이해되게 간결하게\n"
-                "- 핵심: 무엇을/언제까지/어떻게 해야 하는지\n"
-                "- 필요하면 체크리스트(불릿) 사용\n"
                 "- 대상자 수/캠프명은 자연스럽게 반영\n"
                 "- 긴급 공지(urgency=high)면 톤을 더 단호하게\n"
                 "- 최종 출력은 response_format 스키마를 따른 구조화 결과로만 낸다\n"
+                "- 제공된 내용 외에 추가 정보는 절대 넣지 않는다\n"
             ),
         )
 
@@ -59,6 +58,7 @@ def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:
             f"공지 주제: {parsed.topic}\n"
             f"대상자 수: {target_count}명\n"
             f"긴급도: {parsed.urgency}\n\n"
+            f"사용자 요청 원문: {state.request_text}"
             "이 조건에 맞춰 공지 제목과 본문을 작성해줘."
         )
 

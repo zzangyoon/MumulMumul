@@ -59,6 +59,7 @@ def compose_dm_node(state: MessagingAgentState) -> MessagingAgentState:
                 "- personality은 성향 분석 정보를 기반으로 개인의 성향에 따라 아래 중 하나로 선택:\n"
                 "  friendly / formal / concise / detailed / encouraging\n"
                 "- 최종 출력은 response_format 구조화 결과로만 생성한다\n"
+                "- 제공된 내용 외에 추가 정보는 절대 넣지 않는다\n"
             ),
         )
 
@@ -76,6 +77,7 @@ def compose_dm_node(state: MessagingAgentState) -> MessagingAgentState:
                 f"tendancy_code: {user.tendency_type_code}\n"
                 f"topic: {parsed.topic}\n"
                 f"urgency: {parsed.urgency}\n\n"
+                f"사용자 요청 원문: {state.request_text}"
                 "이 사용자에게 보낼 DM을 작성해줘."
             )
 
