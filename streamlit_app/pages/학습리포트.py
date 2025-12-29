@@ -12,7 +12,7 @@ from streamlit_app.api.curriculum import (
 from streamlit_app.api.camp import fetch_camps
 
 st.set_page_config(layout="wide")
-st.title("📚 학습 리포트")
+st.title("학습 리포트", text_alignment = "center")
 
 # 리포트 가이드
 def render_curriculum_analysis_rules():
@@ -51,24 +51,14 @@ def render_curriculum_analysis_rules():
 # --------------------------------
 if "curriculum_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["curriculum_session"] = {
-        "camps": None,                       # fetch_camps() 결과
-        "camp_name_to_id": None,            # {name: id}
         "curriculum_config_by_camp": {},    # {camp_id: config}
         "curriculum_reports": {},           # {f"{camp_id}_{week_index}": payload}
     }
 
 session_cache = st.session_state["curriculum_session"]
-
-# --- 캠프 목록은 세션에 한 번만 저장 ---
-if session_cache["camps"] is None:
-    res = fetch_camps()  # [{camp_id, name, start_date, end_date, ...}, ...] 가정
-    camps = res.get("camps", [])
-    camp_name_to_id = {c["name"]: c["camp_id"] for c in camps}
-    session_cache["camps"] = camps
-    session_cache["camp_name_to_id"] = camp_name_to_id
-else:
-    camps = session_cache["camps"]
-    camp_name_to_id = session_cache["camp_name_to_id"]
+camp_session_cache = st.session_state["camp_session"]
+camps = camp_session_cache["camps"]
+camp_name_to_id = camp_session_cache["camp_name_to_id"]
 
 # --------------------------------
 # 1) 캠프 목록 / 주차 선택
@@ -77,10 +67,13 @@ st.sidebar.header("필터 설정")
 
 camp_name = st.sidebar.selectbox("반 선택", list(camp_name_to_id.keys()))
 camp_id = camp_name_to_id[camp_name]
+camp = camps[camp_id]
+camp_start_date = camp.get("start_date")
+camp_end_date = camp.get("end_date")
 
-weeks = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"]
+weeks = [f"{i} 주차" for i in range(1, camp["total_weeks"] + 1)]
 selected_week_label = st.sidebar.selectbox("주차 선택", weeks)
-week_index = int(selected_week_label.split()[1])  # "Week 3" -> 3
+week_index = int(selected_week_label.split()[0])  # "Week 3" -> 3
 week_label = f"{week_index}주차"
 
 # --------------------------------
@@ -88,6 +81,7 @@ week_label = f"{week_index}주차"
 # --------------------------------
 report_key = f"{camp_id}_{week_index}"
 reports_cache = session_cache["curriculum_reports"]
+
 
 # 1) 세션에서 먼저 찾기
 payload = reports_cache.get(report_key)
@@ -196,6 +190,12 @@ for row in cat_pattern_raw:
 # 6) 커리큘럼 강화 우선순위
 priority_rows = ai_insights.get("priority", [])
 df_priority = pd.DataFrame(priority_rows)
+
+# =========================================================
+# 이번 주 리포트
+# =========================================================
+st.subheader(f"[{camp_name}] {week_label} 학습 리포트", text_alignment="center")
+st.markdown(f"{camp_start_date} ~ {camp_end_date} 학습 챗봇에 올라온 글을 분석한 결과입니다.", text_alignment="center")
 
 # ================================
 # 탭 구성

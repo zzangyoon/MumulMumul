@@ -1,9 +1,11 @@
 # streamlit_app/api/curriculum.py
 import os
 import requests
+from dotenv import load_dotenv
 
+load_dotenv()
 
-BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://localhost:8020")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL")
 
 
 def fetch_curriculum_report(camp_id: int, week_index: str):
