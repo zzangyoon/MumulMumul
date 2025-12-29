@@ -1,5 +1,5 @@
 # app/core/schemas.py
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel
 from sqlalchemy import (
@@ -242,30 +242,41 @@ class ChatRoomUser(Base):
 # 운영진 공지/DM DB
 # ================================
 # 공지/DM 로그 저장
-class NoticeLog(Base):
-    __tablename__ = "notice_log"
+class Message(Base):
+    __tablename__ = "message"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    camp_id = Column(Integer, nullable=False)
-    Recipient_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
-    Sender_id = Column(Integer, ForeignKey("user.user_id"), nullable=True)
-    message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    message_type = Column(String(16), nullable=False)  # "notice" | "dm"
+    camp_id = Column(Integer, nullable=True)  # notice면 필수로 쓰고, dm은 선택
+    sender_id = Column(Integer, ForeignKey("user.user_id"), nullable=True)
+
+    title = Column(String(200), nullable=True)
+    message_text = Column(Text, nullable=False)
+
     is_need_confirmation = Column(Boolean, default=False, nullable=False)
 
-    sender = relationship("User", foreign_keys=[Sender_id])
+    created_at = Column(DateTime, default=datetime.now(timezone.utc), nullable=False)
 
-# 유저가 체크 했는지 여부
-class NoticeConfirmation(Base):
-    __tablename__ = "notice_confirmation"
+    sender = relationship("User", foreign_keys=[sender_id])
+    
+class MessageRecipient(Base):
+    __tablename__ = "message_recipient"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
-    notice_id= Column(Integer, ForeignKey("notice_log.id"), nullable=False)
-    camp_id = Column(Integer, nullable=False)
-    user_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+
+    message_id = Column(Integer, ForeignKey("message.id"), nullable=False)
+    recipient_id = Column(Integer, ForeignKey("user.user_id"), nullable=False)
+
+    # 확인(읽음/확인 버튼) 최소
     is_confirmed = Column(Boolean, default=False, nullable=False)
     confirmed_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    notice = relationship("NoticeLog", foreign_keys=[notice_id])
+    message = relationship("Message", foreign_keys=[message_id])
+    recipient = relationship("User", foreign_keys=[recipient_id])
+
 
 # =====================================
 # DB 초기화 함수

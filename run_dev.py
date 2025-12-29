@@ -24,7 +24,7 @@ def main() -> int:
         "8020",
     ]
 
-  
+    
 
     print("Starting uvicorn and streamlit...")
     uvicorn_proc: Optional[subprocess.Popen] = None
