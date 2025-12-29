@@ -9,7 +9,7 @@ from functools import cache
 load_dotenv()
 
 @cache
-def openai_chat_model(model_name: str = "gpt-4.1-mini", temperature: float = 0.0):
+def openai_chat_model(model_name: str = "gpt-5-mini", temperature: float = 0.0):
     model = init_chat_model(
         model_name,
         temperature=temperature

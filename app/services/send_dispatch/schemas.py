@@ -15,7 +15,7 @@ class ParsedMessagingRequest(BaseModel):
     requested_user_ids: Optional[List[int]] = None
     target_query: Optional[Dict[str, Any]] = None
 
-    delivery_channel: Literal["stub", "websocket"] = "stub"
+    delivery_channel: Literal["stub", "websocket"] = "websocket"
     urgency: Literal["normal", "high"] = "normal"
     language: Literal["ko"] = "ko"
 
@@ -50,6 +50,8 @@ class DispatchResult(BaseModel):
     failures: List[Dict[str, str]] = Field(default_factory=list)
 
 class MessagingAgentState(BaseModel):
+    sender_id: Optional[int] = None
+
     request_text: str
     current_time: datetime
 

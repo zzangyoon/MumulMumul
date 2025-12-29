@@ -1,6 +1,9 @@
 # app/services/send_dispatch/graph.py
+from functools import lru_cache
 import sys
 from pathlib import Path
+
+from app.services.send_dispatch.nodes.approve_before_dispatch_node import approve_before_dispatch_node
 
 CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[3]  # .../app/services/send_dispatch/graph.py 기준
@@ -30,7 +33,7 @@ from app.services.send_dispatch.nodes.compose_dm_node import compose_dm_node
 # dispatch (websocket 지원하려면 async 권장)
 from app.services.send_dispatch.nodes.dispatch_and_log_node import dispatch_and_log_node
 
-
+@lru_cache()
 def build_send_dispatch_graph():
     """
     Flow:
@@ -81,6 +84,62 @@ def build_send_dispatch_graph():
     g.add_edge("dispatch_and_log_node", END)
 
     return g.compile()
+
+def build_preview_dispatch_graph():
+    """
+    Flow:
+      parse_request
+        -> select_targets
+        -> compose_messages_router (conditional)
+            -> compose_notice_node
+            -> compose_dm_node
+        -> approve_before_dispatch_node
+        -> dispatch_and_log
+        -> END
+    """
+    g = StateGraph(MessagingAgentState)
+
+    # 1) 노드 등록
+    g.add_node("parse_request_node", parse_request_node)
+    g.add_node("select_targets_node", select_targets_node)
+
+    g.add_node("compose_notice_node", compose_notice_node)
+    g.add_node("compose_dm_node", compose_dm_node)
+
+    g.add_node("approve_before_dispatch_node", approve_before_dispatch_node)
+
+    # dispatch가 async 함수면 그대로 add_node 가능 (LangGraph는 async 지원)
+    g.add_node("dispatch_and_log_node", dispatch_and_log_node)
+
+    # 2) 시작점
+    g.set_entry_point("parse_request_node")
+
+    # 3) 직렬 연결
+    g.add_edge("parse_request_node", "select_targets_node")
+    # compose -> approve -> dispatch
+    g.add_edge("compose_notice_node", "approve_before_dispatch_node")
+    g.add_edge("compose_dm_node", "approve_before_dispatch_node")
+    g.add_edge("approve_before_dispatch_node", "dispatch_and_log_node")
+    g.add_edge("dispatch_and_log_node", END)
+
+    # 4) 조건 분기 (라우터가 "compose_notice_node" / "compose_dm_node" 반환)
+    g.add_conditional_edges(
+        "select_targets_node",
+        compose_router_node,
+        {
+            "compose_notice_node": "compose_notice_node",
+            "compose_dm_node": "compose_dm_node",
+        },
+    )
+
+    # 5) 합류
+    g.add_edge("compose_notice_node", "dispatch_and_log_node")
+    g.add_edge("compose_dm_node", "dispatch_and_log_node")
+
+    # 6) 종료
+    g.add_edge("dispatch_and_log_node", END)
+
+    return g
 
 
 # ------------------------------------------------------------

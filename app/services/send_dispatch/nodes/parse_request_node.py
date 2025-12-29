@@ -28,16 +28,17 @@ def build_parse_request_chain(llm):
          "요청: {request_text}\n"
          "현재시간: {current_time}\n\n"
          "규칙:\n"
-         "- target_scope는 'camp_all', 'user_list', 'query' 중 하나로 설정해야 한다.\n"
+         "- target_scope는 'camp_all', 'user_list' 중 하나로 설정해야 한다.\n"
          "  - camp_all: 캠프 전체에 메세지를 보낼 때\n"
          "  - user_list: 특정 사용자들에게 메세지를 보낼 때\n"
-         "- message_type은 항상 'notice'\n"
-         "- target_scope는 항상 'camp_all'\n"
-         "- delivery_channel은 항상 'stub'\n"
+         "- message_type는 'notice' 또는 'dm'으로 설정해야 한다.\n"
+         "  - notice: 공지 메세지일 때\n"
+         "  - dm: 개인 다이렉트 메세지일 때\n"
          "- camp_name은 'OO 캠프/OO 캠프로/OO 캠프에'에서 OO만 추출\n"
          "- user_names는 직접적으로 언급된 메세지를 받는 사용자 이름 리스트\n"
          "- topic은 메세지의 핵심 주제만 짧게 요약(예: 'QR 코드 출결')\n"
-         "- 불명확하면 topic은 원문에서 가장 핵심 명사구로 추출\n"
+         "   - 불명확하면 topic은 원문에서 가장 핵심 명사구로 추출\n"
+         "- urgency는 'normal' 또는 'high'로 설정\n"
         ),
     ]).partial(format_instructions=parser.get_format_instructions())
 
