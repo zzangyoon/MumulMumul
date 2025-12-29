@@ -13,20 +13,22 @@ async def ack(websocket: WebSocket, state: ClientState, payload: Dict[str, Any])
     클라가 DM/공지 수신 확인을 보낼 때.
     payload 예:
       {
-        "message_id": "uuid",
+        "message_id": int,
         "kind": "dm" | "notice",
         "receivedAt": "ISO8601"
       }
     """
+    message_id = payload.get("messageId")
     user_id = state.user_id
+    print(f"[Dispatch][ACK] 메세지 확인 요청 user_id={user_id} payload={payload}")
 
     db_gen = get_db()
     db = next(db_gen)
 
     mr = (
         db.query(MessageRecipient)
-        .filter(MessageRecipient.recipient_id == payload.userId)
-        .filter(MessageRecipient.message_id == payload.messageId)
+        .filter(MessageRecipient.recipient_id == user_id)
+        .filter(MessageRecipient.message_id == message_id)
         .first()
     )
     if mr is None:
@@ -41,7 +43,7 @@ async def ack(websocket: WebSocket, state: ClientState, payload: Dict[str, Any])
     else:
         print(f"[Dispatch][ACK] 이미 확인한 메세지 user_id={user_id} payload={payload}")
 
-    print(f"[Dispatch][ACK] user_id={user_id} payload={payload}")
+    print(f"[Dispatch][ACK] 메세지 확인 완료 user_id={user_id} payload={payload}")
 
     return {
         "domain": "dispatch",
