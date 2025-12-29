@@ -30,6 +30,7 @@ class ComposeNoticeResult(BaseModel):
 
 class ComposeDM(BaseModel):
     user_id: int = Field(..., description="대상 user_id")
+    user_name: Optional[str] = Field(default=None, description="대상 user 이름")
     message_text: str = Field(..., description="최종 DM 본문(운영진이 그대로 발송 가능)")
     # 5가지 성향에 맞춘 개인화 메시지
     personality_tone: Literal["friendly", "formal", "concise", "detailed", "encouraging"] = Field(
