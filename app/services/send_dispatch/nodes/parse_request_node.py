@@ -89,14 +89,14 @@ if __name__ == "__main__":
         수령 시점: 26년 1월 초 예상
         """
     request_text_2 = """
-        안녕, 머물머물 캠프에 있는 모든 사람들에게 'QR 코드 출결'에 대한 공지를 보내줘.
+        안녕, 머물머물 캠프의 모든 지각자들에게 QR코드 알림에 대한 DM을 보내줘.
         """
     request_text_3 = """
         머물머물 캠프의 사용자 김철수, 이영희, 박민수에게 '프로젝트 제출 마감'에 대한 메세지를 전달해줘.
         """
     
     test_state = MessagingAgentState(
-        request_text=request_text_3,
+        request_text=request_text_2,
         current_time=datetime.now()
     )
 
