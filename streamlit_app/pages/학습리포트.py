@@ -11,7 +11,8 @@ from streamlit_app.api.curriculum import (
 )
 from streamlit_app.api.camp import fetch_camps
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    page_title="학습 리포트", layout="wide")
 st.title("학습 리포트", text_alignment = "center")
 
 # 리포트 가이드

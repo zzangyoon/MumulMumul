@@ -9,7 +9,9 @@ from streamlit_app.api.curriculum import (
 )
 from streamlit_app.api.camp import fetch_camps
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    page_title="커리큘럼 분석",
+    layout="wide")
 st.title("📚 커리큘럼 분석")
 
 # --------------------------------
@@ -19,6 +21,7 @@ if "curriculum_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["curriculum_session"] = {
         "curriculum_config_by_camp": {},    # {camp_id: config}
         "curriculum_reports": {},           # {f"{camp_id}_{week_index}": payload}
+        "curriculum_raw_text": "",            # 커리큘럼 텍스트 원문
     }
 
 session_cache = st.session_state["curriculum_session"]
@@ -34,11 +37,6 @@ st.sidebar.header("필터 설정")
 camp_name = st.sidebar.selectbox("반 선택", list(camp_name_to_id.keys()))
 camp_id = camp_name_to_id[camp_name]
 camp = camps[camp_id]
-
-weeks = [f"{i} 주차" for i in range(1, camp["total_weeks"] + 1)]
-selected_week_label = st.sidebar.selectbox("주차 선택", weeks)
-week_index = int(selected_week_label.split()[0])  # "Week 3" -> 3
-week_label = f"{week_index}주차"
 
 # --------------------------------
 # 2) 커리큘럼 구조 자동 분석
@@ -60,11 +58,13 @@ with tab_analyze:
 
     st.markdown("####  커리큘럼 텍스트 자동 분석")
 
+    # 만약 기존에 raw_text가 저장되어 있다면 기본값으로 세팅
+    st.session_state["curriculum_raw_text"] = config.get("raw_text", "")
     raw_text = st.text_area(
         "커리큘럼 전체 설명을 붙여넣어 주세요. (1주차 ~ N주차)",
-        height=180,
+        height=400,
         key="curriculum_raw_text",
-        placeholder=(
+        placeholder= (
             "예시)\n"
             "1주차: 파이썬 기초, 자료형, 조건문, 반복문\n"
             "2주차: Numpy / Pandas 데이터 처리\n"

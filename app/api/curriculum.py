@@ -143,6 +143,7 @@ def analyze_curriculum_text(
     update_doc = {
             "camp_id": camp_id,
             "weeks": [week.model_dump() for week in config.weeks],
+            "raw_text": payload.raw_text,
             "updated_at": now,
     }
     upsert_curriculum_config(
