@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from streamlit_app.api.feedback import create_feedback_report, fetch_feedback_report
 from streamlit_app.container.chart import draw_wordcloud, make_ratio_gauge
+from streamlit_app.session import get_camp_session
 
 
 # ============================================
@@ -22,6 +23,8 @@ st.title("속닥숲 리포트", text_alignment="center")
 # --------------------------------
 # 0) 세션 기반 데이터 캐시 설정
 # --------------------------------
+camp_session_cache = get_camp_session()
+
 if "feedback_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["feedback_session"] = {
         "feedback_reports": {},  # {f"{camp_id}_{week_index}": report_payload}

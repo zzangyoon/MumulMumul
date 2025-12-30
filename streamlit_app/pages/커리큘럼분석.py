@@ -8,6 +8,7 @@ from streamlit_app.api.curriculum import (
     save_curriculum_config,
 )
 from streamlit_app.api.camp import fetch_camps
+from streamlit_app.session import get_camp_session
 
 st.set_page_config(
     page_title="커리큘럼 분석",
@@ -17,6 +18,8 @@ st.title("📚 커리큘럼 분석")
 # --------------------------------
 # 0) 세션 기반 데이터 캐시 설정
 # --------------------------------
+camp_session_cache = get_camp_session()
+
 if "curriculum_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["curriculum_session"] = {
         "curriculum_config_by_camp": {},    # {camp_id: config}

@@ -14,6 +14,7 @@ from api.attendance import (
 
 from api.camp import fetch_camps
 from streamlit_app.container.chart import make_ratio_gauge
+from streamlit_app.session import get_camp_session
 
 # ============================================
 # 0. 페이지 기본 설정
@@ -29,6 +30,8 @@ st.title("출결 리포트", text_alignment="center")
 # ============================================
 # 0-1. 세션 기반 데이터 캐시 설정
 # ============================================
+camp_session_cache = get_camp_session()
+
 if "attendance_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["attendance_session"] = {
         "attendance_reports": {},      # {f"{camp_id}_{date_str}": payload}
