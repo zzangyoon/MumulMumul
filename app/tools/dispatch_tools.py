@@ -1,6 +1,6 @@
 # app/tools/dispatch_tools.py
 from typing import Any, Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from langchain_core.tools import tool
 
@@ -44,6 +44,7 @@ async def dispatch_websocket_dm(
             title=None,
             message_text=message_text,
             is_need_confirmation=is_need_confirmation,
+            created_at=datetime.now(timezone.utc),
         )
         db.add(message)
         db.flush()  # message.id 확보
@@ -108,6 +109,7 @@ async def dispatch_websocket_notice(
             title=title,
             message_text=message_text,
             is_need_confirmation=is_need_confirmation,
+            created_at=datetime.now(timezone.utc),
         )
         db.add(message)
         db.flush()  # message.id 확보
