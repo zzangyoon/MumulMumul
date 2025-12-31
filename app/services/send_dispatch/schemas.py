@@ -4,10 +4,14 @@ from typing import List, Optional, Literal, Dict, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
 
+class QueryPurpose(str, Enum):
+    TARGETING = "targeting"          # 대상자 뽑기
+    PERSONALIZATION = "personalization"  # 메시지 내용 강화
+
 class DBTable(str, Enum):
     CAMP = "camp"
     USER = "user"
-    ATTENDANCE_DAILY = "attendance_daily_aggregate"
+    ATTENDANCE_DAILY = "attendance_daily"
     SESSION_ACTIVITY_LOG = "session_activity_log"
 
 class FilterOp(str, Enum):
@@ -28,6 +32,7 @@ class DBQueryPlan(BaseModel):
         default_factory=list,
         description="조회할 필드 리스트 (예: ['user_id', 'user_name'])"
     )
+    purpose: QueryPurpose = QueryPurpose.PERSONALIZATION
 
 class ParsedMessagingRequest(BaseModel):
     message_type: Literal["notice", "dm"] = "notice"
@@ -38,7 +43,7 @@ class ParsedMessagingRequest(BaseModel):
     topic: str = Field(..., description="예: 'QR 코드 출결'")
 
     query_plans: Optional[List[DBQueryPlan]] = Field(
-        default=None,
+        default=[],
         description="DB 조회가 필요한 경우, 어떤 데이터를 어떻게 조회할지에 대한 계획",
     )
 
