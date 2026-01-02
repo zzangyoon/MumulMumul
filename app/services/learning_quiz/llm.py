@@ -39,12 +39,14 @@ def generate_quiz(context: str, grade: str) -> QuizList:
 
     # parser가 사용할 format_instructions 가져오기
     format_instructions = quiz_parser.get_format_instructions()
-
+    context_empty = "true" if (not context or not context.strip()) else "false"
+    
     try:
         result = quiz_chain.invoke({
             "context": context,
             "grade": grade,
-            "format_instructions": format_instructions
+            "format_instructions": format_instructions,
+            "context_empty": context_empty
         })
 
         logger.info("[Quiz Generation] 성공적으로 JSON 파싱 완료")
