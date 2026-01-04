@@ -14,6 +14,7 @@ from api.attendance import (
 
 from api.camp import fetch_camps
 from streamlit_app.container.chart import make_ratio_gauge
+from streamlit_app.container.chatbot import display_chatbot
 from streamlit_app.session import get_camp_session
 
 # ============================================
@@ -24,8 +25,6 @@ st.set_page_config(
     page_icon="👥",
     layout="wide"
 )
-
-st.title("출결 리포트", text_alignment="center")
 
 # ============================================
 # 0-1. 세션 기반 데이터 캐시 설정
@@ -135,504 +134,515 @@ st.sidebar.markdown("---")
 # 2-2. 출결 리포트 조회 및 생성
 # ============================================
 
-# 캐시 키: 캠프 + 날짜
-date_key = selected_date
-report_key = f"{camp_id}_{date_key}"
-reports_cache = session_cache["attendance_reports"]
+def display_report():
+    st.title("출결 리포트", text_alignment="center")
+    # 캐시 키: 캠프 + 날짜
+    date_key = selected_date
+    report_key = f"{camp_id}_{date_key}"
+    reports_cache = session_cache["attendance_reports"]
 
-# 1) 세션 캐시에서 먼저 찾기
-payload = reports_cache.get(report_key)
+    # 1) 세션 캐시에서 먼저 찾기
+    payload = reports_cache.get(report_key)
 
-# 2) 세션에 없으면 → 백엔드에서 조회 (이미 생성된 리포트가 있으면 캐시)
-if payload is None:
-    db_report = get_attendance_report(
-        camp_id=camp_id,
-        target_date=date_key,  # 클라이언트 래퍼에서 쿼리 파라미터로 전달
-    )
-    if db_report is not None:
-        payload = db_report
-        reports_cache[report_key] = payload
-    else:
-        payload = None
-
-# 리포트 재생성 버튼 (강제 새로 생성)
-generate_clicked = st.sidebar.button("리포트 생성하기", use_container_width=True)
-if generate_clicked:
-    with st.spinner("리포트 생성 중입니다..."):
-        # POST로 새 리포트 생성 후 응답 payload 받기
-        payload = generate_attendance_report(
+    # 2) 세션에 없으면 → 백엔드에서 조회 (이미 생성된 리포트가 있으면 캐시)
+    if payload is None:
+        db_report = get_attendance_report(
             camp_id=camp_id,
-            target_date=date_key,
+            target_date=date_key,  # 클라이언트 래퍼에서 쿼리 파라미터로 전달
         )
-        session_cache["attendance_reports"][report_key] = payload
+        if db_report is not None:
+            payload = db_report
+            reports_cache[report_key] = payload
+        else:
+            payload = None
 
-# 최종 payload 다시 읽기
-payload = session_cache["attendance_reports"].get(report_key)
-
-# st.json(payload)
-# ============================================
-# 2. payload 유효성 체크
-# ============================================
-if not payload:
-    st.info(
-        "아직 해당 캠프/날짜의 출결 리포트가 없습니다.\n"
-        "왼쪽에서 '리포트 생성하기' 버튼을 눌러 리포트를 생성해 주세요."
-    )
-    st.stop()
-
-
-summary = payload.get("summary", {}) or {}
-students_raw = payload.get("students_stat", []) or []
-top_ops_actions = summary.get("top_ops_actions", [])
-# st.json(summary)
-
-if not students_raw:
-    st.warning("학생별 출결 리포트가 아직 없습니다.")
-    st.stop()
-
-df = pd.DataFrame(students_raw)
-
-# 안전한 기본값 처리
-if "risk_level" not in df.columns:
-    df["risk_level"] = "정상"
-if "pattern_type" not in df.columns:
-    df["pattern_type"] = ""
-if "ops_action" not in df.columns:
-    df["ops_action"] = ""
-
-# ============================================
-# 3. 페이지 타이틀 및 요약
-# ============================================
-
-# =========================================================
-# 이번 주 리포트
-# =========================================================
-st.subheader(f"[{camp_name}] {selected_date} 출결 리포트", text_alignment="center")
-st.markdown(f"{camp_start_date} ~ {selected_date} 출결을 분석한 결과입니다.", text_alignment="center")
-st.markdown("---")
-
-
-# ============================================
-# 3-1. 상단 KPI 요약 영역
-# ============================================
-attendance_rate = summary.get(
-    "attendance_rate",
-    df["attendance_rate"].mean() if "attendance_rate" in df.columns else None,
-)
-high_risk_count = summary.get(
-    "high_risk_count",
-    int((df["risk_level"] == "고위험").sum()),
-)
-warning_count = summary.get(
-    "warning_count",
-    int(df["risk_level"].isin(["위험", "주의"]).sum()),
-)
-risk_count = summary.get(
-    "risk_count",
-    int((df["risk_level"] == "위험").sum()),
-)
-caution_count = summary.get(
-    "caution_count",
-    int((df["risk_level"] == "주의").sum()),
-)
-total_students = summary.get("total_students", len(df))
-
-left, _, right = st.columns([1, 0.2, 1.5])
-
-# 1) 왼쪽: 출석률 파이차트
-with left:
-    st.markdown("#### 🥧 출석률")
-
-    if attendance_rate is None:
-        st.info("출석률 데이터가 없습니다.")
-    else:
-        present = max(0.0, min(1.0, float(attendance_rate)))
-        absent = 1.0 - present
-
-        pie_df = pd.DataFrame(
-            [
-                {"label": "출석", "value": present},
-                {"label": "미출석", "value": absent},
-            ]
-        )
-
-        # 파이차트
-        pie = (
-            alt.Chart(pie_df)
-            .mark_arc(innerRadius=70)  # 🔥 도넛 형태로 만들어 중앙 공간 확보
-            .encode(
-                theta=alt.Theta(field="value", type="quantitative"),
-                color=alt.Color(field="label", type="nominal", legend=None),
-                tooltip=[
-                    alt.Tooltip("label:N", title="구분"),
-                    alt.Tooltip("value:Q", title="비율", format=".1%"),
-                ],
+    # 리포트 재생성 버튼 (강제 새로 생성)
+    generate_clicked = st.sidebar.button("리포트 생성하기", use_container_width=True)
+    if generate_clicked:
+        with st.spinner("리포트 생성 중입니다..."):
+            # POST로 새 리포트 생성 후 응답 payload 받기
+            payload = generate_attendance_report(
+                camp_id=camp_id,
+                target_date=date_key,
             )
-        )
+            session_cache["attendance_reports"][report_key] = payload
 
-        # 중앙 텍스트 (출석률 %)
-        center_text = (
-            alt.Chart(
-                pd.DataFrame(
-                    {"text": [f"{present*100:.1f}%"]}
+    # 최종 payload 다시 읽기
+    payload = session_cache["attendance_reports"].get(report_key)
+
+    # st.json(payload)
+    # ============================================
+    # 2. payload 유효성 체크
+    # ============================================
+    if not payload:
+        st.info(
+            "아직 해당 캠프/날짜의 출결 리포트가 없습니다.\n"
+            "왼쪽에서 '리포트 생성하기' 버튼을 눌러 리포트를 생성해 주세요."
+        )
+        st.stop()
+
+
+    summary = payload.get("summary", {}) or {}
+    students_raw = payload.get("students_stat", []) or []
+    top_ops_actions = summary.get("top_ops_actions", [])
+    # st.json(summary)
+
+    if not students_raw:
+        st.warning("학생별 출결 리포트가 아직 없습니다.")
+        st.stop()
+
+    df = pd.DataFrame(students_raw)
+
+    # 안전한 기본값 처리
+    if "risk_level" not in df.columns:
+        df["risk_level"] = "정상"
+    if "pattern_type" not in df.columns:
+        df["pattern_type"] = ""
+    if "ops_action" not in df.columns:
+        df["ops_action"] = ""
+
+    # ============================================
+    # 3. 페이지 타이틀 및 요약
+    # ============================================
+
+    # =========================================================
+    # 이번 주 리포트
+    # =========================================================
+    st.subheader(f"[{camp_name}] {selected_date} 출결 리포트", text_alignment="center")
+    st.markdown(f"{camp_start_date} ~ {selected_date} 출결을 분석한 결과입니다.", text_alignment="center")
+    st.markdown("---")
+
+
+    # ============================================
+    # 3-1. 상단 KPI 요약 영역
+    # ============================================
+    attendance_rate = summary.get(
+        "attendance_rate",
+        df["attendance_rate"].mean() if "attendance_rate" in df.columns else None,
+    )
+    high_risk_count = summary.get(
+        "high_risk_count",
+        int((df["risk_level"] == "고위험").sum()),
+    )
+    warning_count = summary.get(
+        "warning_count",
+        int(df["risk_level"].isin(["위험", "주의"]).sum()),
+    )
+    risk_count = summary.get(
+        "risk_count",
+        int((df["risk_level"] == "위험").sum()),
+    )
+    caution_count = summary.get(
+        "caution_count",
+        int((df["risk_level"] == "주의").sum()),
+    )
+    total_students = summary.get("total_students", len(df))
+
+    left, _, right = st.columns([1, 0.2, 1.5])
+
+    # 1) 왼쪽: 출석률 파이차트
+    with left:
+        st.markdown("#### 🥧 출석률")
+
+        if attendance_rate is None:
+            st.info("출석률 데이터가 없습니다.")
+        else:
+            present = max(0.0, min(1.0, float(attendance_rate)))
+            absent = 1.0 - present
+
+            pie_df = pd.DataFrame(
+                [
+                    {"label": "출석", "value": present},
+                    {"label": "미출석", "value": absent},
+                ]
+            )
+
+            # 파이차트
+            pie = (
+                alt.Chart(pie_df)
+                .mark_arc(innerRadius=70)  # 🔥 도넛 형태로 만들어 중앙 공간 확보
+                .encode(
+                    theta=alt.Theta(field="value", type="quantitative"),
+                    color=alt.Color(field="label", type="nominal", legend=None),
+                    tooltip=[
+                        alt.Tooltip("label:N", title="구분"),
+                        alt.Tooltip("value:Q", title="비율", format=".1%"),
+                    ],
                 )
             )
-            .mark_text(fontSize=26, fontWeight="bold")
-            .encode(text="text:N")
+
+            # 중앙 텍스트 (출석률 %)
+            center_text = (
+                alt.Chart(
+                    pd.DataFrame(
+                        {"text": [f"{present*100:.1f}%"]}
+                    )
+                )
+                .mark_text(fontSize=26, fontWeight="bold")
+                .encode(text="text:N")
+            )
+
+            chart = pie + center_text
+
+            st.altair_chart(chart, use_container_width=True)
+            st.caption("전체 참여일 기준 출석률")
+    # 2) 오른쪽: 고위험/위험/주의 게이지
+    with right:
+        st.markdown("#### 🚨 위험 분포 (고위험/위험/주의)")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("전체", f"{total_students}명")
+        with c2:
+            st.metric("고위험", f"{high_risk_count}명")
+        with c3:
+            st.metric("위험", f"{risk_count}명")
+        with c4:
+            st.metric("주의", f"{caution_count}명")
+
+        # 게이지 데이터
+        level_data = [
+            {"level": "고위험", "count": int(high_risk_count)},
+            {"level": "위험", "count": int(risk_count)},
+            {"level": "주의", "count": int(caution_count)},
+        ]
+
+        # make_ratio_gauge는 너가 이미 가지고 있는 함수 사용
+        gauge = make_ratio_gauge(
+            data=level_data,
+            label_col="level",
+            count_col="count",
+            bar_label="고위험/위험/주의 분포",
+            color_map=None,   # ✅ 색 지정 안 함(너 규칙)
+            font_size=15,
         )
 
-        chart = pie + center_text
+        if gauge is not None:
+            st.altair_chart(gauge, use_container_width=True)
+            st.caption("전체 학생 중 위험 레벨 비율")
+        else:
+            st.info("게이지를 그릴 데이터가 없습니다.")
 
-        st.altair_chart(chart, use_container_width=True)
-        st.caption("전체 참여일 기준 출석률")
-# 2) 오른쪽: 고위험/위험/주의 게이지
-with right:
-    st.markdown("#### 🚨 위험 분포 (고위험/위험/주의)")
+        def draw_attendance_trend_sparkline(df: pd.DataFrame) -> None:
+            st.markdown("#### 📉 최근 출결 추세")
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("전체", f"{total_students}명")
-    with c2:
-        st.metric("고위험", f"{high_risk_count}명")
-    with c3:
-        st.metric("위험", f"{risk_count}명")
-    with c4:
-        st.metric("주의", f"{caution_count}명")
+            if df is None or len(df) == 0:
+                st.info("학생 데이터가 없습니다.")
+                return
 
-    # 게이지 데이터
-    level_data = [
-        {"level": "고위험", "count": int(high_risk_count)},
-        {"level": "위험", "count": int(risk_count)},
-        {"level": "주의", "count": int(caution_count)},
-    ]
+            # df에 students의 attendance_records가 들어있다고 가정
+            # attendance_records: [{"date":"2025-11-03", "attendance_type":"ON_TIME"}, ...]
+            if "attendance_records" not in df.columns:
+                st.info("attendance_records가 없어 스파크라인을 만들 수 없습니다.")
+                return
 
-    # make_ratio_gauge는 너가 이미 가지고 있는 함수 사용
-    gauge = make_ratio_gauge(
-        data=level_data,
-        label_col="level",
-        count_col="count",
-        bar_label="고위험/위험/주의 분포",
-        color_map=None,   # ✅ 색 지정 안 함(너 규칙)
-        font_size=15,
-    )
+            # 1) 최근 30일 날짜별 "출석자 비율" 계산
+            rows = []
+            for _, r in df.iterrows():
+                recs = r.get("attendance_records") or []
+                for rec in recs:
+                    rows.append({
+                        "date": rec.get("date", "")[:10],
+                        "atype": rec.get("attendance_type", ""),
+                    })
 
-    if gauge is not None:
-        st.altair_chart(gauge, use_container_width=True)
-        st.caption("전체 학생 중 위험 레벨 비율")
+            if not rows:
+                st.info("출결 기록이 없습니다.")
+                return
+
+            rec_df = pd.DataFrame(rows)
+            rec_df["date"] = pd.to_datetime(rec_df["date"], errors="coerce")
+            rec_df = rec_df.dropna(subset=["date"])
+
+            if rec_df.empty:
+                st.info("출결 기록 날짜 파싱 실패")
+                return
+
+            # ✅ 최근 30일만
+            max_day = rec_df["date"].max()
+            min_day = max_day - pd.Timedelta(days=29)
+            rec_df = rec_df[(rec_df["date"] >= min_day) & (rec_df["date"] <= max_day)]
+
+            # ✅ 출석으로 치는 타입: ON_TIME/LATE/EARLY_LEAVE (ABSENT/UNKNOWN 제외)
+            present_types = {"ON_TIME", "LATE", "EARLY_LEAVE"}
+            rec_df["is_present"] = rec_df["atype"].isin(present_types).astype(int)
+
+            daily = (
+                rec_df.groupby("date")["is_present"]
+                .mean()  # 학생 전체에서 그날 출석 비율
+                .reset_index()
+                .rename(columns={"is_present": "rate"})
+                .sort_values("date")
+            )
+
+            # 3) 스파크라인 (컴팩트 + 꼭짓점 수치 표시)
+            base = alt.Chart(daily, height=80)
+
+            line = base.mark_line(strokeWidth=2).encode(
+                x=alt.X("date:T", title=None, axis=alt.Axis(labels=False, ticks=False)),
+                y=alt.Y(
+                    "rate:Q",
+                    title=None,
+                    axis=alt.Axis(format="%", tickCount=3),
+                    scale=alt.Scale(domain=[0, 1]),
+                ),
+            )
+
+            points = base.mark_point(size=40).encode(
+                x="date:T",
+                y="rate:Q",
+            )
+
+            labels = base.mark_text(
+                dy=-8,              # ✅ 포인트 위로 살짝
+                fontSize=10,
+                color="#444",
+            ).encode(
+                x="date:T",
+                y="rate:Q",
+                text=alt.Text("rate:Q", format=".0%"),  # ✅ 퍼센트 표시
+            )
+
+            chart = line + points + labels
+
+            st.altair_chart(chart, use_container_width=True)
+            st.caption("최근 30일 일별 출석률")
+        
+        draw_attendance_trend_sparkline(df)
+    st.markdown("---")
+
+    # ============================================
+    # 4. 고위험 학생 카드 3개 (Critical Area)
+    # ============================================
+
+    def risk_to_color(risk: str) -> str:
+        if risk == "고위험":
+            return "#ffcccc"
+        if risk == "위험":
+            return "#ffe4b5"
+        if risk == "주의":
+            return "#fff7cc"
+        return "#f5f5f5"
+
+    def risk_to_badge(risk: str) -> str:
+        if risk == "고위험":
+            return "🔥 고위험"
+        if risk == "위험":
+            return "⚠️ 위험"
+        if risk == "주의":
+            return "👀 주의"
+        return "✅ 정상"
+
+    st.markdown("### 🚨 고위험 학생")
+
+    high_risk_df = df[df["risk_level"] == "고위험"].copy()
+
+    if high_risk_df.empty:
+        st.info(
+            "고위험으로 분류된 학생이 없습니다.\n"
+            "그래도 출석 패턴이 떨어지는 학생이 있는지 아래 상세 테이블에서 확인해 주세요."
+        )
     else:
-        st.info("게이지를 그릴 데이터가 없습니다.")
+        # 출석률 오름차순(낮은 순) + 결석 많은 순으로 정렬
+        sort_cols = []
+        ascending = []
+        if "attendance_rate" in high_risk_df.columns:
+            sort_cols.append("attendance_rate")
+            ascending.append(True)
+        if "absent_count" in high_risk_df.columns:
+            sort_cols.append("absent_count")
+            ascending.append(False)
 
-    def draw_attendance_trend_sparkline(df: pd.DataFrame) -> None:
-        st.markdown("#### 📉 최근 출결 추세")
+        if sort_cols:
+            high_risk_df = high_risk_df.sort_values(
+                by=sort_cols,
+                ascending=ascending,
+            )
 
-        if df is None or len(df) == 0:
-            st.info("학생 데이터가 없습니다.")
-            return
+        top3 = high_risk_df.head(3)
+        cols = st.columns(len(top3))
 
-        # df에 students의 attendance_records가 들어있다고 가정
-        # attendance_records: [{"date":"2025-11-03", "attendance_type":"ON_TIME"}, ...]
-        if "attendance_records" not in df.columns:
-            st.info("attendance_records가 없어 스파크라인을 만들 수 없습니다.")
-            return
+        for idx, (_, row) in enumerate(top3.iterrows()):
+            with cols[idx]:
+                name = row.get("name", f"학생 {row.get('user_id', '')}")
+                pattern = row.get("pattern_type", "")
+                att_rate = row.get("attendance_rate", None)
+                absent = row.get("absent_count", 0)
+                late = row.get("late_count", 0)
+                trend = row.get("trend", None)
 
-        # 1) 최근 30일 날짜별 "출석자 비율" 계산
-        rows = []
-        for _, r in df.iterrows():
-            recs = r.get("attendance_records") or []
-            for rec in recs:
-                rows.append({
-                    "date": rec.get("date", "")[:10],
-                    "atype": rec.get("attendance_type", ""),
-                })
+                # --- st.error 카드 본문 구성 ---
+                stats_line = []
+                if att_rate is not None:
+                    stats_line.append(f"출석률 {att_rate*100:.1f}%")
+                if absent is not None:
+                    stats_line.append(f"결석 {int(absent)}회")
+                if late is not None:
+                    stats_line.append(f"지각 {int(late)}회")
 
-        if not rows:
-            st.info("출결 기록이 없습니다.")
-            return
+                lines = [
+                    f"**{name}**  |  {risk_to_badge(row.get('risk_level', ''))}",
+                ]
+                if pattern:
+                    lines.append(f"- 패턴: {pattern}")
+                if stats_line:
+                    lines.append(f"- " + " · ".join(stats_line))
 
-        rec_df = pd.DataFrame(rows)
-        rec_df["date"] = pd.to_datetime(rec_df["date"], errors="coerce")
-        rec_df = rec_df.dropna(subset=["date"])
+                if trend is not None:
+                    arrow = "⬇️" if trend < 0 else "⬆️"
+                    lines.append(f"- 최근 변화: {arrow} {trend*100:.1f}%p")
 
-        if rec_df.empty:
-            st.info("출결 기록 날짜 파싱 실패")
-            return
+                # 🔴 고위험 학생 카드는 st.error로 강조
+                st.error("\n".join(lines))
 
-        # ✅ 최근 30일만
-        max_day = rec_df["date"].max()
-        min_day = max_day - pd.Timedelta(days=29)
-        rec_df = rec_df[(rec_df["date"] >= min_day) & (rec_df["date"] <= max_day)]
+                st.markdown("**권장 즉시 조치**")
+                st.markdown(
+                    "- 1:1 체크인 메시지 발송  \n"
+                    "- 금일 데일리 미팅에서 상태 확인  \n"
+                    "- 필요 시 팀 담당자와 연계"
+                )
 
-        # ✅ 출석으로 치는 타입: ON_TIME/LATE/EARLY_LEAVE (ABSENT/UNKNOWN 제외)
-        present_types = {"ON_TIME", "LATE", "EARLY_LEAVE"}
-        rec_df["is_present"] = rec_df["atype"].isin(present_types).astype(int)
+        # 나머지 고위험 학생은 토글로 숨기기
+        if len(high_risk_df) > 3:
+            with st.expander(f"나머지 고위험 학생 {len(high_risk_df) - 3}명 더 보기"):
+                st.dataframe(
+                    high_risk_df,
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
-        daily = (
-            rec_df.groupby("date")["is_present"]
-            .mean()  # 학생 전체에서 그날 출석 비율
-            .reset_index()
-            .rename(columns={"is_present": "rate"})
-            .sort_values("date")
-        )
+    st.markdown("---")
 
-        # 3) 스파크라인 (컴팩트 + 꼭짓점 수치 표시)
-        base = alt.Chart(daily, height=80)
+    # ============================================
+    # 5. 운영진 우선 액션 Top 3
+    # ============================================
 
-        line = base.mark_line(strokeWidth=2).encode(
-            x=alt.X("date:T", title=None, axis=alt.Axis(labels=False, ticks=False)),
-            y=alt.Y(
-                "rate:Q",
-                title=None,
-                axis=alt.Axis(format="%", tickCount=3),
-                scale=alt.Scale(domain=[0, 1]),
-            ),
-        )
+    # st.markdown("### 🏃 운영진 우선 액션 Top 3")
 
-        points = base.mark_point(size=40).encode(
-            x="date:T",
-            y="rate:Q",
-        )
+    # def build_ops_actions_for_attendance(df: pd.DataFrame):
+    #     actions = []
 
-        labels = base.mark_text(
-            dy=-8,              # ✅ 포인트 위로 살짝
-            fontSize=10,
-            color="#444",
-        ).encode(
-            x="date:T",
-            y="rate:Q",
-            text=alt.Text("rate:Q", format=".0%"),  # ✅ 퍼센트 표시
-        )
+    #     # 1) 고위험자 있으면: 1:1 케어
+    #     high_risk_df = df[df["risk_level"] == "고위험"]
+    #     if not high_risk_df.empty:
+    #         names = ", ".join(high_risk_df["name"].astype(str).head(3).tolist())
+    #         actions.append(
+    #             {
+    #                 "title": "1. 고위험 학생 1:1 체크인",
+    #                 "target": f"고위험 학생: {names} ...",
+    #                 "reason": f"고위험으로 분류된 학생이 총 {len(high_risk_df)}명입니다.",
+    #                 "todo": (
+    #                     "각 학생에게 개별적으로 현재 상황을 묻는 체크인 메시지를 보내고, "
+    #                     "필요 시 15~20분 정도의 간단한 1:1 상담 시간을 제안합니다."
+    #                 ),
+    #             }
+    #         )
 
-        chart = line + points + labels
+    #     # 2) 위험/주의 학생이 많으면: 그룹 케어
+    #     warn_df = df[df["risk_level"].isin(["위험", "주의"])]
+    #     if not warn_df.empty:
+    #         actions.append(
+    #             {
+    #                 "title": "2. 주의/위험 학생 그룹 케어 세션",
+    #                 "target": "주의/위험 등급 학생 전체",
+    #                 "reason": f"주의/위험 등급 학생이 총 {len(warn_df)}명입니다.",
+    #                 "todo": (
+    #                     "공통된 어려움이 있는지 파악하기 위해 3~5명 단위 그룹으로 짧은 케어 세션을 진행하고, "
+    #                     "진도/과제 난이도/시간 관리 측면에서 지원이 필요한 부분을 함께 정리합니다."
+    #                 ),
+    #             }
+    #         )
 
-        st.altair_chart(chart, use_container_width=True)
-        st.caption("최근 30일 일별 출석률")
-    
-    draw_attendance_trend_sparkline(df)
-st.markdown("---")
+    #     # 3) 전체 출석률이 낮으면: 공지/환경 개선
+    #     avg_att = df["attendance_rate"].mean() if "attendance_rate" in df.columns else None
+    #     if avg_att is not None and avg_att < 0.8:
+    #         actions.append(
+    #             {
+    #                 "title": "3. 전체 출석률 저하 공지 및 참여 동기 재강조",
+    #                 "target": "전체 수강생",
+    #                 "reason": f"누적 평균 출석률이 {avg_att*100:.1f}%로 낮은 편입니다.",
+    #                 "todo": (
+    #                     "현재 출석 현황을 간단히 공유하고, 출석이 학습성과와 어떤 관련이 있는지 안내합니다. "
+    #                     "또한 매일 시작 5분 전 리마인드 공지를 보내 출석률을 끌어올립니다."
+    #                 ),
+    #             }
+    #         )
 
-# ============================================
-# 4. 고위험 학생 카드 3개 (Critical Area)
-# ============================================
+    #     return actions[:3]
 
-def risk_to_color(risk: str) -> str:
-    if risk == "고위험":
-        return "#ffcccc"
-    if risk == "위험":
-        return "#ffe4b5"
-    if risk == "주의":
-        return "#fff7cc"
-    return "#f5f5f5"
+    # ops_actions = build_ops_actions_for_attendance(df)
 
-def risk_to_badge(risk: str) -> str:
-    if risk == "고위험":
-        return "🔥 고위험"
-    if risk == "위험":
-        return "⚠️ 위험"
-    if risk == "주의":
-        return "👀 주의"
-    return "✅ 정상"
+    # if ops_actions:
+    #     cols = st.columns(len(ops_actions))
+    #     for idx, action in enumerate(ops_actions):
+    #         with cols[idx]:
+    #             with st.container(border=True):
+    #                 st.markdown(f"#### {action['title']}")
+    #                 st.markdown(f"- **대상**: {action['target']}")
+    #                 st.markdown(f"- **근거**: {action['reason']}")
+    #                 st.markdown("**이번 기준일까지 실행하면 좋은 액션**")
+    #                 st.markdown(action["todo"])
+    # else:
+    #     st.info("현재 데이터 기준으로 별도의 우선 액션 제안은 없습니다.")
 
-st.markdown("### 🚨 고위험 학생")
+    # st.markdown("---")
 
-high_risk_df = df[df["risk_level"] == "고위험"].copy()
+    # ============================================
+    # 6. 출결 상세 테이블 (운영진 조치 칼럼 포함)
+    # ============================================
 
-if high_risk_df.empty:
-    st.info(
-        "고위험으로 분류된 학생이 없습니다.\n"
-        "그래도 출석 패턴이 떨어지는 학생이 있는지 아래 상세 테이블에서 확인해 주세요."
+    st.markdown("### 📂 출결 상세 테이블")
+
+    columns_map = {
+        "name": "이름",
+        "attendance_rate": "출석률",
+        "absent_count": "결석",
+        "late_count": "지각",
+        "early_leave_count": "조퇴",
+        "pattern_type": "출결 패턴",
+        "personality_type": "성향",
+        "risk_level": "위험 등급",
+        "trend": "최근 변화율",
+        "ops_action": "운영진 조치",
+    }
+    show_cols = [c for c in columns_map.keys() if c in df.columns]
+
+    display_df = df[show_cols].rename(columns=columns_map)
+    display_df["운영진 조치"] = display_df["운영진 조치"].str.replace(
+        ". ", ".\n", regex=False
     )
-else:
-    # 출석률 오름차순(낮은 순) + 결석 많은 순으로 정렬
-    sort_cols = []
-    ascending = []
-    if "attendance_rate" in high_risk_df.columns:
-        sort_cols.append("attendance_rate")
-        ascending.append(True)
-    if "absent_count" in high_risk_df.columns:
-        sort_cols.append("absent_count")
-        ascending.append(False)
+    # 퍼센트/소수 처리
+    if "출석률" in display_df.columns:
+        display_df["출석률"] = (display_df["출석률"] * 100).round(1)
 
-    if sort_cols:
-        high_risk_df = high_risk_df.sort_values(
-            by=sort_cols,
-            ascending=ascending,
-        )
-
-    top3 = high_risk_df.head(3)
-    cols = st.columns(len(top3))
-
-    for idx, (_, row) in enumerate(top3.iterrows()):
-        with cols[idx]:
-            name = row.get("name", f"학생 {row.get('user_id', '')}")
-            pattern = row.get("pattern_type", "")
-            att_rate = row.get("attendance_rate", None)
-            absent = row.get("absent_count", 0)
-            late = row.get("late_count", 0)
-            trend = row.get("trend", None)
-
-            # --- st.error 카드 본문 구성 ---
-            stats_line = []
-            if att_rate is not None:
-                stats_line.append(f"출석률 {att_rate*100:.1f}%")
-            if absent is not None:
-                stats_line.append(f"결석 {int(absent)}회")
-            if late is not None:
-                stats_line.append(f"지각 {int(late)}회")
-
-            lines = [
-                f"**{name}**  |  {risk_to_badge(row.get('risk_level', ''))}",
-            ]
-            if pattern:
-                lines.append(f"- 패턴: {pattern}")
-            if stats_line:
-                lines.append(f"- " + " · ".join(stats_line))
-
-            if trend is not None:
-                arrow = "⬇️" if trend < 0 else "⬆️"
-                lines.append(f"- 최근 변화: {arrow} {trend*100:.1f}%p")
-
-            # 🔴 고위험 학생 카드는 st.error로 강조
-            st.error("\n".join(lines))
-
-            st.markdown("**권장 즉시 조치**")
-            st.markdown(
-                "- 1:1 체크인 메시지 발송  \n"
-                "- 금일 데일리 미팅에서 상태 확인  \n"
-                "- 필요 시 팀 담당자와 연계"
-            )
-
-    # 나머지 고위험 학생은 토글로 숨기기
-    if len(high_risk_df) > 3:
-        with st.expander(f"나머지 고위험 학생 {len(high_risk_df) - 3}명 더 보기"):
-            st.dataframe(
-                high_risk_df,
-                hide_index=True,
-                use_container_width=True,
-            )
-
-st.markdown("---")
-
-# ============================================
-# 5. 운영진 우선 액션 Top 3
-# ============================================
-
-# st.markdown("### 🏃 운영진 우선 액션 Top 3")
-
-# def build_ops_actions_for_attendance(df: pd.DataFrame):
-#     actions = []
-
-#     # 1) 고위험자 있으면: 1:1 케어
-#     high_risk_df = df[df["risk_level"] == "고위험"]
-#     if not high_risk_df.empty:
-#         names = ", ".join(high_risk_df["name"].astype(str).head(3).tolist())
-#         actions.append(
-#             {
-#                 "title": "1. 고위험 학생 1:1 체크인",
-#                 "target": f"고위험 학생: {names} ...",
-#                 "reason": f"고위험으로 분류된 학생이 총 {len(high_risk_df)}명입니다.",
-#                 "todo": (
-#                     "각 학생에게 개별적으로 현재 상황을 묻는 체크인 메시지를 보내고, "
-#                     "필요 시 15~20분 정도의 간단한 1:1 상담 시간을 제안합니다."
-#                 ),
-#             }
-#         )
-
-#     # 2) 위험/주의 학생이 많으면: 그룹 케어
-#     warn_df = df[df["risk_level"].isin(["위험", "주의"])]
-#     if not warn_df.empty:
-#         actions.append(
-#             {
-#                 "title": "2. 주의/위험 학생 그룹 케어 세션",
-#                 "target": "주의/위험 등급 학생 전체",
-#                 "reason": f"주의/위험 등급 학생이 총 {len(warn_df)}명입니다.",
-#                 "todo": (
-#                     "공통된 어려움이 있는지 파악하기 위해 3~5명 단위 그룹으로 짧은 케어 세션을 진행하고, "
-#                     "진도/과제 난이도/시간 관리 측면에서 지원이 필요한 부분을 함께 정리합니다."
-#                 ),
-#             }
-#         )
-
-#     # 3) 전체 출석률이 낮으면: 공지/환경 개선
-#     avg_att = df["attendance_rate"].mean() if "attendance_rate" in df.columns else None
-#     if avg_att is not None and avg_att < 0.8:
-#         actions.append(
-#             {
-#                 "title": "3. 전체 출석률 저하 공지 및 참여 동기 재강조",
-#                 "target": "전체 수강생",
-#                 "reason": f"누적 평균 출석률이 {avg_att*100:.1f}%로 낮은 편입니다.",
-#                 "todo": (
-#                     "현재 출석 현황을 간단히 공유하고, 출석이 학습성과와 어떤 관련이 있는지 안내합니다. "
-#                     "또한 매일 시작 5분 전 리마인드 공지를 보내 출석률을 끌어올립니다."
-#                 ),
-#             }
-#         )
-
-#     return actions[:3]
-
-# ops_actions = build_ops_actions_for_attendance(df)
-
-# if ops_actions:
-#     cols = st.columns(len(ops_actions))
-#     for idx, action in enumerate(ops_actions):
-#         with cols[idx]:
-#             with st.container(border=True):
-#                 st.markdown(f"#### {action['title']}")
-#                 st.markdown(f"- **대상**: {action['target']}")
-#                 st.markdown(f"- **근거**: {action['reason']}")
-#                 st.markdown("**이번 기준일까지 실행하면 좋은 액션**")
-#                 st.markdown(action["todo"])
-# else:
-#     st.info("현재 데이터 기준으로 별도의 우선 액션 제안은 없습니다.")
-
-# st.markdown("---")
-
-# ============================================
-# 6. 출결 상세 테이블 (운영진 조치 칼럼 포함)
-# ============================================
-
-st.markdown("### 📂 출결 상세 테이블")
-
-columns_map = {
-    "name": "이름",
-    "attendance_rate": "출석률",
-    "absent_count": "결석",
-    "late_count": "지각",
-    "early_leave_count": "조퇴",
-    "pattern_type": "출결 패턴",
-    "personality_type": "성향",
-    "risk_level": "위험 등급",
-    "trend": "최근 변화율",
-    "ops_action": "운영진 조치",
-}
-show_cols = [c for c in columns_map.keys() if c in df.columns]
-
-display_df = df[show_cols].rename(columns=columns_map)
-display_df["운영진 조치"] = display_df["운영진 조치"].str.replace(
-    ". ", ".\n", regex=False
-)
-# 퍼센트/소수 처리
-if "출석률" in display_df.columns:
-    display_df["출석률"] = (display_df["출석률"] * 100).round(1)
-
-if "최근 변화율" in display_df.columns:
-    display_df["최근 변화율"] = pd.to_numeric(display_df["최근 변화율"], errors="coerce")
-    display_df["최근 변화율"] = (display_df["최근 변화율"] * 100).round(1)
+    if "최근 변화율" in display_df.columns:
+        display_df["최근 변화율"] = pd.to_numeric(display_df["최근 변화율"], errors="coerce")
+        display_df["최근 변화율"] = (display_df["최근 변화율"] * 100).round(1)
 
 
-edited_df = st.data_editor(
-    display_df,
-    hide_index=True,
-    use_container_width=True,
-    num_rows="fixed",
-    column_config={
-        "위험 등급": st.column_config.SelectboxColumn(
-            "위험 등급",
-            options=["고위험", "위험", "주의", "정상"],
-        ),
-        "운영진 조치": st.column_config.TextColumn(
-            "운영진 조치",
-            help="해당 학생에 대해 어떤 조치를 했는지 간단히 기록하세요.",
-            width="large", 
-        ),
-    },
-)
+    edited_df = st.data_editor(
+        display_df,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "위험 등급": st.column_config.SelectboxColumn(
+                "위험 등급",
+                options=["고위험", "위험", "주의", "정상"],
+            ),
+            "운영진 조치": st.column_config.TextColumn(
+                "운영진 조치",
+                help="해당 학생에 대해 어떤 조치를 했는지 간단히 기록하세요.",
+                width="large", 
+            ),
+        },
+    )
+
+col1, col2 = st.columns([1,0.5])
+
+with col1:
+    with st.container(height=600, border=False):
+        display_report()
+with col2: 
+    with st.container(height=600, border=True):
+        display_chatbot()
