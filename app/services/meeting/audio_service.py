@@ -12,6 +12,7 @@ from app.services.meeting.schemas import AudioChunkUploadResponse
 from app.services.meeting.meeting_service import MeetingService
 from app.core.db import SessionLocal
 from app.config import settings
+from app.core.timezone import timestamp_to_datetime, get_current_datetime
 import asyncio
 
 logger = setup_logger(__name__)
@@ -196,6 +197,17 @@ class AudioService:
     ) -> AudioChunkUploadResponse:
         
         logger.info(f"Audio chunk upload: Meeting={meeting_id}, User={user_id}, Chunk={chunk_index}")
+
+        upload_dt = timestamp_to_datetime(upload_timestamp)
+        server_dt = get_current_datetime()
+        
+        logger.info(
+            f"타임스탬프 비교:\n"
+            f"  upload_timestamp: {upload_timestamp}\n"
+            f"  -> datetime: {upload_dt} (UTC 기준 변환)\n"
+            f"  server_time: {server_dt} (UTC)\n"
+            f"  차이: {(server_dt.timestamp() * 1000 - upload_timestamp)/1000:.1f}초"
+        )
         
         # 회의 상태 초기화
         self._init_meeting_state(meeting_id)
@@ -267,12 +279,28 @@ class AudioService:
         audio_duration_ms = AudioProcessor.get_audio_duration_ms(denoised_path)
         logger.info(f"  음성 길이: {audio_duration_ms}ms ({audio_duration_ms/1000:.1f}초)")
 
+        # 클라이언트 시간을 서버시간으로 보정
+        if meeting.time_offset is not None:
+            server_upload_timestamp = upload_timestamp - meeting.time_offset
+        else:
+            server_upload_timestamp = upload_timestamp
+            logger.warning("time_offset이 None 입니다. 보정 없이 진행합니다.")
+        
         # 8. 녹음 시작 시점 계산
-        chunk_start_timestamp = upload_timestamp - audio_duration_ms
+        chunk_start_timestamp = server_upload_timestamp - audio_duration_ms
 
         # 9. 회의 기준 상대 시간 계산
         chunk_relative_start_ms = chunk_start_timestamp - meeting.start_server_timestamp
         
+        logger.info(
+            f"시간 동기화:\n"
+            f"  upload_timestamp (client): {upload_timestamp}\n"
+            f"  time_offset: {meeting.time_offset}\n"
+            f"  server_upload_timestamp: {server_upload_timestamp}\n"
+            f"  audio_duration_ms: {audio_duration_ms}\n"
+            f"  chunk_start_timestamp: {chunk_start_timestamp}\n"
+            f"  chunk_relative_start_ms: {chunk_relative_start_ms}"
+        )
         # 10. 이전 청크 경로 (겹침 처리용)
         chunk_dir = PathManager.get_user_chunk_dir(meeting_id, str(user_id))
         # prev_chunk_path = chunk_dir / f"chunk_{chunk_index - 1}.wav" if chunk_index > 0 else None

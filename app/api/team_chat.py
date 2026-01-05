@@ -1,7 +1,7 @@
 # app/api/team_chat_router.py
 
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -11,7 +11,7 @@ from app.core.db import get_db
 from app.core.mongodb import get_mongo_db
 
 from app.core.schemas import User, ChatRoom, ChatRoomUser
-from app.core.timezone import datetime_to_custom_str, datetime_to_iso_milliseconds
+from app.core.timezone import datetime_to_custom_str, datetime_to_iso_milliseconds, utc_to_kst
 
 mongo_db = get_mongo_db()
 collection = mongo_db["team_chat_messages"]
@@ -33,6 +33,8 @@ class TeamChatRoomResponse(BaseModel):
 
 class ChatMessageResponse(BaseModel):
     chatId: str
+    role: str
+    type: str
     userId: int
     userName: str
     message: str
@@ -162,11 +164,13 @@ def get_team_chat_messages(
         results.append(
             ChatMessageResponse(
                 chatId=str(doc["_id"]),
+                role=doc.get("role", "user"),
+                type=doc.get("type", "team"),
                 userId=doc["userId"],
                 userName=doc.get("userName", ""),
                 message=doc["message"],
                 createdAt=datetime_to_iso_milliseconds(doc["createdAt"]),
-                formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
+                formattedCreatedAt=datetime_to_custom_str(utc_to_kst(doc["createdAt"]))
             ))
         
 
@@ -214,21 +218,25 @@ def post_team_chat_message(
 
     doc = {
         "roomId": teamChatId,
+        "type": "team",
+        "role": "user",
         "userId": payload.userId,
         "userName": user.name,
         "message": payload.message,
-        "createdAt": datetime.now()
+        "createdAt": datetime.now(timezone.utc)
     }
 
     result = collection.insert_one(doc)
 
     return ChatMessageResponse(
         chatId=str(result.inserted_id),
+        type="team",
+        role="user",
         userId=payload.userId,
         userName=user.name,
         message=payload.message,
         createdAt=payload.createdAt,
-        formattedCreatedAt=datetime_to_custom_str(doc["createdAt"])
+        formattedCreatedAt=datetime_to_custom_str(utc_to_kst(doc["createdAt"]))
     )
 
 

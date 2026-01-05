@@ -8,6 +8,7 @@ from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 import numpy as np
 
+from app.core.models import get_embedding_model, openai_chat_model
 from app.services.feedbackBoard.schemas import FeedbackBoardPost
 from app.services.feedbackBoard.io_contract import FeedbackBoardState, FinalizePayload, PipelineInput, RunConfig
 
@@ -20,27 +21,6 @@ from app.services.feedbackBoard.nodes.action_classify_node import action_classif
 from app.services.feedbackBoard.nodes.aggregate_weekly_context_node import aggregate_weekly_context_node
 from app.services.feedbackBoard.nodes.weekly_report_node import weekly_report_node
 from app.services.feedbackBoard.nodes.finalize_node import finalize_node
-
-
-EmbedFn = Callable[[List[str]], List[List[float]]]
-OpenAIEmbedFn = OpenAIEmbeddings.embed_documents
-
-def dummy_embed(texts):
-    """
-    테스트용 임베딩:
-    - 공지/운영 계열 => [0, 1]
-    - 팀/팀장 계열 => [1, 0]
-    - 그 외 => [0.5, 0.5]
-    """
-    out = []
-    for t in texts:
-        if ("공지" in t) or ("운영" in t) or ("노션" in t) or ("디스코드" in t):
-            out.append([0.0, 1.0])
-        elif ("팀장" in t) or ("팀 " in t) or ("팀" in t):
-            out.append([1.0, 0.0])
-        else:
-            out.append([0.5, 0.5])
-    return out
 
 def build_feedbackboard_graph(
     llm: ChatOpenAI,
@@ -64,10 +44,10 @@ def build_feedbackboard_graph(
         return split_intent_node(state)
 
     def _dedup(state: FeedbackBoardState) -> FeedbackBoardState:
-        return dedup_within_week_node(state, dummy_embed)
+        return dedup_within_week_node(state, embed_fn = get_embedding_model().embed_documents)
 
     def _cluster(state: FeedbackBoardState) -> FeedbackBoardState:
-        return topic_cluster_node(state, dummy_embed)
+        return topic_cluster_node(state, embed_fn = get_embedding_model().embed_documents, llm= openai_chat_model())
 
     def _keyword(state: FeedbackBoardState) -> FeedbackBoardState:
         return keyword_extract_node(state, top_k=top_k_keywords)
@@ -160,6 +140,6 @@ def run_feedbackboard_pipeline(
     if len(out_state['errors']) > 0:
         print("FeedbackBoard pipeline errors:", out_state['errors'])
         # 필요하면 raise 대신 return out_state 로 바꿔도 됨
-        raise RuntimeError(f"feedbackBoard pipeline failed: {out_state.errors}")
+        raise RuntimeError(f"feedbackBoard pipeline failed: {out_state['errors']}")
 
     return out_state['final']

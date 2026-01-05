@@ -143,7 +143,7 @@ class TeamChatMessage(BaseModel):
     - message: 실제 채팅 내용
     - created_at: 메시지 생성 시각
     - type: "team" (팀 채팅) or "ai" (AI 챗봇)
-    - role: "user" (사용자 메시지) or "assistant" (AI
+    - role: "user" (사용자 메시지) or "assistant" (AI 챗봇)
     """
     room_id: str
     user_id: int
@@ -151,7 +151,7 @@ class TeamChatMessage(BaseModel):
     message: str
     created_at: datetime = datetime.utcnow()
     type: Literal["team", "ai"] = "team"
-    role: Optional[Literal["user", "assistant"]] = None
+    role: Literal["user", "assistant"] = "user"
 
 
 # TeamChatMessage 모델을 Mongo 레지스트리에 등록
@@ -192,6 +192,10 @@ class CurriculumConfig(BaseModel):
     weeks: List[CurriculumWeek] = Field(
         default_factory=list,
         description="주차별 커리큘럼 구조",
+    )
+
+    raw_text: Optional[str] = Field(
+        None,   description="커리큘럼 텍스트 원본 (자동 분석 시 사용됨)",
     )
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -347,36 +351,3 @@ register_mongo_model(
         ("generated_at", -1),
         ],
 )
-
-# =====================================
-# 3-5. 출결 리포트 모델 정의
-# =====================================
-class AttendanceSummary(BaseModel):
-    attendance_rate: float
-    total_students: int
-    high_risk_count: int
-    warning_count: int
-    late_rate: Optional[float] = None
-
-class AttendanceStudentStat(BaseModel):
-    student_id: int
-    name: str
-    attendance_rate: float
-    absent_count: int
-    late_count: int
-    early_leave_count: int
-    pattern_type: Optional[str] = None
-    risk_level: Literal["고위험", "위험", "주의", "정상"]
-    trend: Optional[float] = None
-    ops_action: Optional[str] = None
-
-class AttendanceReport(BaseModel):
-    camp_id: int
-    camp_name: str
-    target_date: datetime
-
-    summary: AttendanceSummary
-    students: List[AttendanceStudentStat]
-
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)

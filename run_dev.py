@@ -21,10 +21,10 @@ def main() -> int:
         "--host",
         "0.0.0.0",
         "--port",
-        "8022",
+        "8020",
     ]
 
-  
+    
 
     print("Starting uvicorn and streamlit...")
     uvicorn_proc: Optional[subprocess.Popen] = None

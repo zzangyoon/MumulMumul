@@ -18,8 +18,8 @@ def seed_dummy_data():
     Session = sessionmaker(bind=engine, autoflush=False)
     session = Session()
 
-    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
-    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
+    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 12, 1), end_date=datetime(2025, 12, 1) + timedelta(weeks=6), total_weeks=6)
+    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 12, 1), end_date=datetime(2025, 12, 1) + timedelta(weeks=6), total_weeks=6)
 
     session.add_all([test_camp, ai_camp])
     session.commit()

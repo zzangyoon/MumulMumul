@@ -17,10 +17,12 @@ def initialize_user_dummies():
     SessionLocal = sessionmaker(bind=init_db(SQLITE_URL))
     db = SessionLocal()
 
-    users = db.query(User).all()
-    for user in users:
-        user.tendency_completed = 0
-        user.tendency_type_code = None
+    tendancy_types = ["pillar", "doer", "analyst", "balancer", "supporter"]
+    for i in range(5):
+        id = i + 5
+        user = db.query(User).filter(User.user_id == id).first()
+        if user:
+            user.tendency_type_code = tendancy_types[i]
     db.commit()
     db.close()
     print("Initialized all user dummies: tendency_completed set to 0 and tendency_type_code set to Null.")

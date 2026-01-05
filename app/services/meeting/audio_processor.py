@@ -313,13 +313,24 @@ class AudioProcessor:
                 vad_parameters={
                     "threshold": 0.5,
                     "min_speech_duration_ms": 250,
-                    "min_silence_duration_ms": 2000
+                    "min_silence_duration_ms": 500,
+                    "speech_pad_ms" : 300
                 }
             )
             
             # Generator를 list로 변환 (점진적)
             segments = []
             for idx, segment in enumerate(segments_generator):
+                duration = segment.end - segment.start
+
+                if duration > 5.0:
+                    logger.warning(
+                        f"[긴 Segment 감지] {idx}번째\n"
+                        f"  길이: {duration:.1f}초\n"
+                        f"  시작: {segment.start:.1f}s\n"
+                        f"  종료: {segment.end:.1f}s\n"
+                        f"  텍스트: {segment.text[:100]}"
+                    )
                 segments.append({
                     "start": float(segment.start),
                     "end": float(segment.end),

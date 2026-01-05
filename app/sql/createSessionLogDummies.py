@@ -1,170 +1,144 @@
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
 
-from sqlalchemy.orm import sessionmaker
-
-# 이 파일 기준으로 프로젝트 루트 계산
+# 프로젝트 루트 설정
 CURRENT_FILE = Path(__file__).resolve()
-ROOT_DIR = CURRENT_FILE.parents[2]   # .../MumulMumul
+ROOT_DIR = CURRENT_FILE.parents[2]
 sys.path.append(str(ROOT_DIR))
 
-from app.core.schemas import User, Camp, SessionActivityLog, init_db
-from app.config import SQLITE_URL
+import random
+from datetime import datetime, timedelta, time, date
+
+from sqlalchemy.orm import Session
+
+from app.core.db import SessionLocal  # 프로젝트에 맞게
+from app.core.schemas import SessionActivityLog  # 프로젝트에 맞게
 
 
-def daterange(start, end):
-    """날짜 범위 생성기 (start~end inclusive)"""
-    for n in range((end - start).days + 1):
-        yield start + timedelta(days=n)
+CAMP_ID = 1
+START_DATE = datetime(2025, 12, 1)
+END_DATE = datetime(2025, 12, 1) + timedelta(weeks=6)
+
+# 유저 id (너가 준 값)
+USERS = {
+    5: "user1",  # 김해찬
+    6: "user2",  # 윤여민
+    7: "user3",  # 김서영
+    8: "user4",  # 이성윤
+    9: "user5",  # 차요준
+}
+
+random.seed(42)
 
 
-# ---------------------------
-# 유저별 패턴 생성 함수들
-# ---------------------------
-
-def generate_user1(date: datetime):
-    """user1 (김해찬) – 성실 패턴: 09:00~18:00 거의 정상 출석"""
-    join = date.replace(hour=9, minute=0, second=0) + timedelta(minutes=0)
-    leave = date.replace(hour=18, minute=0, second=0) + timedelta(minutes=0)
-    return join, leave
+def iter_weekdays(start: date, end: date):
+    cur = start
+    while cur <= end:
+        if cur.weekday() < 5:  # 0~4 = Mon~Fri
+            yield cur
+        cur += timedelta(days=1)
 
 
-def generate_user2(date: datetime):
-    """user2 (윤여민) – 지각/조퇴 패턴"""
-    join = date.replace(hour=10, minute=10, second=0)  # 10시 조금 넘어서
-    leave = date.replace(hour=16, minute=30, second=0)  # 16:30 정도
-    return join, leave
+def dt(d: date, hh: int, mm: int = 0) -> datetime:
+    return datetime(d.year, d.month, d.day, hh, mm, 0)
 
 
-def generate_user3(date: datetime):
-    """user3 (김서영) – 결석 & 중간 이탈 패턴"""
-    # 40% 결석
-    import random
-    if random.random() < 0.4:
-        return None, None
-
-    join = date.replace(hour=9, minute=10, second=0)
-    leave = join + timedelta(hours=3)   # 3시간 정도 있다가 나감
-    return join, leave
-
-
-def generate_user4(date: datetime):
-    """user4 (이성윤) – 주 2~3회만 출석(저빈도)"""
-    import random
-    # 70% 결석
-    if random.random() < 0.7:
-        return None, None
-
-    join = date.replace(hour=9, minute=20, second=0)
-    leave = date.replace(hour=18, minute=10, second=0)
-    return join, leave
+def add_log(db: Session, user_id: int, d: date, join_h: int, join_m: int, leave_h: int, leave_m: int):
+    row = SessionActivityLog(
+        camp_id=CAMP_ID,
+        user_id=user_id,
+        date=d,
+        join_at=dt(d, join_h, join_m),
+        leave_at=dt(d, leave_h, leave_m),
+    )
+    db.add(row)
 
 
-def generate_user5(date: datetime):
-    """
-    user5 (차요준) – 후반부 급격 이탈 패턴
-    - 11월은 거의 정상 출석
-    - 12월 들어가면서 결석 점점 증가
-    """
-    import random
-
-    if date.month == 12:
-        # 12월은 날짜가 뒤로 갈수록 결석 확률 증가
-        days_into_dec = date.day
-        absent_prob = min(0.2 + days_into_dec * 0.04, 0.9)
-        if random.random() < absent_prob:
-            return None, None
-
-    join = date.replace(hour=9, minute=5, second=0)
-    leave = date.replace(hour=18, minute=5, second=0)
-    return join, leave
-
-
-def seed_session_activity_log():
-    # ---------------------------
-    # DB 세션 생성
-    # ---------------------------
-    engine = init_db(SQLITE_URL)
-    Session = sessionmaker(bind=engine, autoflush=False)
-    session = Session()
-
+def seed():
+    db = SessionLocal()
     try:
-        # ---------------------------
-        # 1. 머물머물 캠프 찾기
-        # ---------------------------
-        test_camp: Camp | None = (
-            session.query(Camp)
-            .filter(Camp.name == "머물머물 캠프")
-            .first()
-        )
-        if test_camp is None:
-            print("❌ '머물머물 캠프'를 찾을 수 없습니다. 먼저 seed_dummy_data를 실행했는지 확인하세요.")
-            return
+        weekdays = list(iter_weekdays(START_DATE, END_DATE))
+        n = len(weekdays)
 
-        # 캠프 기간
-        start_date: datetime = test_camp.start_date
-        end_date: datetime = test_camp.end_date
+        for idx, d in enumerate(weekdays):
+            # -------------------------
+            # user1: 안정형 (거의 정상)
+            # -------------------------
+            if random.random() < 0.95:
+                add_log(db, 5, d, 9, random.choice([0, 0, 5, 10]), 18, random.choice([0, 0, 0, 10]))
+            else:
+                # 아주 가끔 조퇴
+                add_log(db, 5, d, 9, 0, 16, 30)
 
-        # ---------------------------
-        # 2. user1 ~ user5 조회
-        # ---------------------------
-        login_ids = ["user1", "user2", "user3", "user4", "user5"]
-        users = (
-            session.query(User)
-            .filter(User.login_id.in_(login_ids))
-            .all()
-        )
-        user_by_login = {u.login_id: u for u in users}
+            # -------------------------
+            # user2: 지각형 + 점점 악화
+            # 초반: 09:00 근처 / 후반: 10:30까지 밀림
+            # -------------------------
+            # 지각 분(min) = 주차 진행될수록 커짐
+            late_min = int((idx / max(1, n - 1)) * 90)  # 0~90분
+            join = dt(d, 9, 0) + timedelta(minutes=late_min + random.choice([0, 0, 5, 10]))
+            leave = dt(d, 18, 0)
+            if random.random() < 0.1:  # 가끔 조퇴도 섞기
+                leave = dt(d, 17, 0)
+            add_log(db, 6, d, join.hour, join.minute, leave.hour, leave.minute)
 
-        # 다 안 나오면 오류 안내
-        missing = [lid for lid in login_ids if lid not in user_by_login]
-        if missing:
-            print(f"❌ 다음 login_id 유저를 찾을 수 없습니다: {missing}")
-            return
+            # -------------------------
+            # user3: 결석형 + 최근 급락
+            # 마지막 2주(10일 내외) 결석 폭증
+            # -------------------------
+            last_two_weeks = idx >= n - 10
+            if last_two_weeks:
+                # 최근 급락: 60% 결석
+                if random.random() < 0.6:
+                    pass  # 결석 = 로그 없음
+                else:
+                    add_log(db, 7, d, 9, 30, 18, 0)  # 지각 약간
+            else:
+                # 초반: 대부분 정상 + 가끔 결석(10%)
+                if random.random() < 0.1:
+                    pass
+                else:
+                    add_log(db, 7, d, 9, 0, 18, 0)
 
-        pattern_funcs = {
-            "user1": generate_user1,
-            "user2": generate_user2,
-            "user3": generate_user3,
-            "user4": generate_user4,
-            "user5": generate_user5,
-        }
+            # -------------------------
+            # user4: 조퇴형 + 회복
+            # 초반엔 16~17시 조퇴 많고, 후반엔 18시 근접
+            # -------------------------
+            # 조퇴 정도: 초반(많이) -> 후반(적게)
+            early_leave_min = int((1 - (idx / max(1, n - 1))) * 120)  # 120분(2h) -> 0
+            leave_time = dt(d, 18, 0) - timedelta(minutes=early_leave_min + random.choice([0, 0, 10, 20]))
+            join_time = dt(d, 9, 0)
+            if random.random() < 0.15:
+                # 가끔 지각
+                join_time = dt(d, 9, 20)
+            add_log(db, 8, d, join_time.hour, join_time.minute, leave_time.hour, leave_time.minute)
 
-        print("🚀 session_activity_log 더미 생성 시작...")
+            # -------------------------
+            # user5: 공백위험형/불규칙형
+            # 하루 2세션으로 점심 제외 4h+ 공백을 일부 날짜에 만들어줌
+            # + 가끔 결석
+            # -------------------------
+            if random.random() < 0.15:
+                pass  # 결석
+            else:
+                if random.random() < 0.6:
+                    # 공백위험: 오전 조금 접속 -> 오후 늦게 다시 접속
+                    # 예: 09:30~11:00, 15:30~18:00  (gap=4h30m, 점심 제외해도 3h30m지만 날짜마다 더 크게)
+                    add_log(db, 9, d, 9, 30, 10, 30)
+                    add_log(db, 9, d, 16, 0, 18, 0)   # gap 크게
+                else:
+                    # 불규칙: 늦게 시작하거나 짧게 접속
+                    if random.random() < 0.5:
+                        add_log(db, 9, d, 10, 0, 18, 0)  # 지각
+                    else:
+                        add_log(db, 9, d, 9, 0, 15, 0)   # 조퇴
 
-        # 기존 더미를 지우고 싶으면 아래 주석 해제
-        # session.query(SessionActivityLog).delete()
-        # session.commit()
-
-        for current_date in daterange(start_date, end_date):
-            # 주말 제외하고 싶으면 주석 해제
-            # if current_date.weekday() >= 5:
-            #     continue
-
-            for login_id in login_ids:
-                func = pattern_funcs[login_id]
-                join_at, leave_at = func(current_date)
-
-                if join_at is None or leave_at is None:
-                    # 결석
-                    continue
-
-                user = user_by_login[login_id]
-
-                log = SessionActivityLog(
-                    user_id=user.user_id,
-                    join_at=join_at,
-                    leave_at=leave_at,
-                )
-                session.add(log)
-
-        session.commit()
-        print("✅ session_activity_log 더미 생성 완료!")
+        db.commit()
+        print("✅ session_activity_log seeded")
 
     finally:
-        session.close()
+        db.close()
 
 
 if __name__ == "__main__":
-    seed_session_activity_log()
+    seed()

@@ -13,6 +13,15 @@ chat_col = mongo_db["learning_chat_logs"]
 
 db = get_db()
 
+def fetch_logs_by_camp_id(db: Session, camp_id: int) -> int:
+    """
+    주어진 캠프에해당하는 채팅 로그를 MongoDB에서 모두 조회
+    """
+    query = {
+        "camp_id": camp_id,
+    }
+    docs = list(chat_col.find(query))
+    return docs
 
 def fetch_weekly_logs(db: Session, camp_id: int, week_index: int) -> List[Dict[str, Any]]:
     """

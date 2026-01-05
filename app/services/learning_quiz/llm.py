@@ -6,6 +6,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
+from app.core.models import openai_chat_model
 from app.services.learning_quiz.schemas import QuizList
 from app.services.learning_quiz.prompt import QUIZ_GENERATION_PROMPT
 from app.core.logger import setup_logger
@@ -20,10 +21,7 @@ quiz_parser = PydanticOutputParser(pydantic_object=QuizList)
 prompt = ChatPromptTemplate.from_template(QUIZ_GENERATION_PROMPT)
 
 # 3) LLM 생성
-llm = ChatOpenAI(
-    model="gpt-4.1-mini",  # JSON 안정성 ↑
-    temperature=0.1
-)
+llm = openai_chat_model(temperature=0.1)
 
 # 4) Prompt + LLM + Parser 를 Chain으로 합치기
 quiz_chain = prompt | llm | quiz_parser
@@ -41,12 +39,14 @@ def generate_quiz(context: str, grade: str) -> QuizList:
 
     # parser가 사용할 format_instructions 가져오기
     format_instructions = quiz_parser.get_format_instructions()
-
+    context_empty = "true" if (not context or not context.strip()) else "false"
+    
     try:
         result = quiz_chain.invoke({
             "context": context,
             "grade": grade,
-            "format_instructions": format_instructions
+            "format_instructions": format_instructions,
+            "context_empty": context_empty
         })
 
         logger.info("[Quiz Generation] 성공적으로 JSON 파싱 완료")

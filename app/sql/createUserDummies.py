@@ -27,8 +27,8 @@ def seed_dummy_data():
     session.commit()
 
     # 2. camp
-    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
-    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 11, 3), end_date=datetime(2025, 11, 3) + timedelta(weeks=6), total_weeks=6)
+    test_camp = Camp(name="머물머물 캠프", start_date=datetime(2025, 12, 1), end_date=datetime(2025, 12, 1) + timedelta(weeks=6), total_weeks=6)
+    ai_camp = Camp(name="AI 캠프", start_date=datetime(2025, 12, 1), end_date=datetime(2025, 12, 1) + timedelta(weeks=6), total_weeks=6)
 
     session.add_all([test_camp, ai_camp])
     session.commit()
@@ -43,7 +43,7 @@ def seed_dummy_data():
             User(
                 login_id=login_id,
                 password_hash=login_id,  # id와 비번 동일
-                name=f"윤여민",
+                name=f"최자경",
                 email=f"admin{i}@mumul.com",
                 user_type_id=admin_type.type_id,
                 camp_id=None,
@@ -60,6 +60,7 @@ def seed_dummy_data():
     # 테스트 캠프 학생
     login_ids = ["user1", "user2", "user3", "user4", "user5"]
     test_names = ["김해찬", "윤여민", "김서영", "이성윤", "차요준"]
+    tendancy_types = ["pillar", "doer", "analyst", "balancer", "supporter"]
     for i in range(len(login_ids)):
         login_id = login_ids[i]
         test_user = [

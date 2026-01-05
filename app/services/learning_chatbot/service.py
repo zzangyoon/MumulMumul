@@ -7,6 +7,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from operator import itemgetter
 
+from app.core.models import openai_chat_model
+
 # ==============================================================
 # 로깅 설정
 # ==============================================================
@@ -58,13 +60,19 @@ GRADE_RULES = {
 """
 }
 
+# ==============================================================
+# 히스토리 포맷 함수
+# ==============================================================
+def format_history(history=[]):
+    if len(history) > 10:
+        history = history[-10:]
+    return "\n".join([f"{msg.role}: {msg.content}" for msg in history])
+
+
 
 # ==============================================================
 # RAG 체인 초기화
 # ==============================================================
-
-
-
 def initialize_rag_chain():
     logger.info("🔧 initialize_rag_chain() 실행 시작")
 
@@ -88,16 +96,46 @@ def initialize_rag_chain():
         logger.info("4) 프롬프트 템플릿 설정 중...")
         template = """
         당신은 부트캠프 학생을 위한 학습 도우미 챗봇입니다.
-        답변은 반드시 제공된 [Context] 안의 정보만 사용해야 합니다.
-        문서에 없는 내용은 절대 지어내지 마세요.
-        [FORMAT] 형식에 맞게 답변하세요.
+        반드시 [Context]를 기반으로 답변해야 합니다.
+        다만, 학생의 수준(grade)에 따라 답변 방식이 다릅니다.
+        [History]는 이전 대화 내역입니다. 필요 시 참고하세요.
 
-        [FORMAT]
-        - 답변은 반드시 1문장만 사용
-        - 필요한 경우 예시는 한 줄만 허용
+        =========================
+        [공통 규칙]
+        - Context에 포함된 내용은 반드시 반영해야 함
+        - Context와 직접적으로 모순되는 내용은 금지
+        - History는 문맥 이해용으로만 사용
+        =========================
+
+        [학생 수준별 역할]
+
+        초급
+        - Context에 나온 내용만 사용
+        - 어려운 용어는 반드시 쉬운 말로 풀어서 설명
+        - 짧은 설명 + 일상적인 비유 또는 간단한 예시 1개 허용
+        - "왜 중요한지" 정도까지만 설명
+
+        중급
+        - Context를 기반으로 답변하되,
+        - 개념을 더 정확하게 설명하기 위해 **추가적인 배경 설명 허용**
+        - Context에 없는 전문 용어 사용 가능 (단, 과도한 확장 금지)
+        - 실무에서 헷갈리는 포인트 1개까지 허용
+
+        고급
+        - Context를 핵심 근거로 사용
+        - 내부 동작 원리, 구조, 메커니즘 설명 가능
+        - Context를 넘어서는 **전문적인 설명, 비교, 기술 용어 적극 허용**
+        - 단, 질문과 직접 관련 없는 장황한 설명은 금지
+
+        =========================
+
+        [출력 형식 가이드]
+        - 답변은 반드시 2문장만 사용
         - 불릿 포인트 금지
-        - 부가 설명, 실무 포인트 등 추가 정보 금지
-        
+        - 개행문자 \n을 절대 사용하지 마시오
+        - 난이도에 맞는 어투 유지
+
+ 
         [학생 수준]
         {grade}
 
@@ -111,27 +149,31 @@ def initialize_rag_chain():
         [Question]
         {question}
         -------------------------
+
+        [History]
+        {history}
         """
 
         prompt = ChatPromptTemplate.from_template(template)
 
         logger.info("5) LLM 모델 로딩 중...")
-        model = ChatOpenAI(model=LLM_MODEL, temperature=0.2)
+        model = openai_chat_model()
 
         logger.info("6) RAG 체인 최종 생성 완료")
 
+        # history 포맷 함수인 체인에 추가 코드
         rag_chain = (
             {
                 "context": itemgetter("question") | retriever,
                 "question": itemgetter("question"),
                 "grade": itemgetter("grade"),
                 "grade_rules": itemgetter("grade_rules"),
+                "history": lambda inputs: format_history(inputs.get("history", [])),
             }
             | prompt
             | model
             | StrOutputParser()
         )
-
         return rag_chain
 
     except Exception as e:
@@ -145,7 +187,7 @@ def initialize_rag_chain():
 
 rag_chain = initialize_rag_chain()
 
-def answer(question, grade="중급"):
+def answer(question, grade="중급", history=[]):
     logger.info(f"💬 answer() 호출됨 | question='{question}', grade='{grade}'")
 
     if grade not in GRADE_RULES:
@@ -160,7 +202,8 @@ def answer(question, grade="중급"):
         result = rag.invoke({
             "question": question,
             "grade": grade,
-            "grade_rules": GRADE_RULES[grade]
+            "grade_rules": GRADE_RULES[grade],
+            "history": history,
         })
 
         logger.info("✅ answer() 응답 생성 완료")

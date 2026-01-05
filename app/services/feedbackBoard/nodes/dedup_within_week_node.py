@@ -16,17 +16,92 @@ from sklearn.metrics.pairwise import cosine_similarity
 from app.services.feedbackBoard.schemas import FeedbackBoardPost
 from app.services.feedbackBoard.io_contract import FeedbackBoardState
 
-def dummy_embed(texts):
-    # 같은 의미면 거의 같은 벡터 나오게
-    return [
-        np.array([1.0, 0.0]) if "공지" in t else np.array([0.0, 1.0])
-        for t in texts
-    ]
+import re
+from typing import List, Sequence, Any, Optional
+
+def pick_representative_idx_rule_based(
+    valid_posts: Sequence[Any],   # FeedbackBoardPost list
+    dup_group: List[int],         # indices into valid_posts
+    *,
+    prefer_mid_len: bool = True,
+    min_len: int = 20,
+    max_len: int = 800,
+) -> int:
+    """
+    dup_group 내 대표 글을 LLM 없이 규칙 기반으로 선택.
+    목표:
+    - 너무 짧거나(정보 부족), 너무 길거나(군더더기/중복 가능)한 글은 패널티
+    - 구두점/문장 경계가 있는 글(설명력이 좋은 글) 가산
+    - 마스킹(*) 비율이 과하면 패널티(욕설/공격 표현 비중이 높을 가능성)
+    - 숫자/구체 키워드(예: 마감, 일정, 팀장 등)가 약간 있으면 가산(설명 구체성)
+    """
+
+    def get_text(idx: int) -> str:
+        a = valid_posts[idx].ai_analysis
+        return (a.clean_text or "").strip()
+
+    def mask_ratio(text: str) -> float:
+        if not text:
+            return 1.0
+        return text.count("*") / max(1, len(text))
+
+    def sentence_signal(text: str) -> int:
+        # 문장부호/줄바꿈이 있으면 설명형일 가능성 가산
+        return sum(text.count(x) for x in [".", "?", "!", "\n"])
+
+    def keyword_signal(text: str) -> int:
+        # 아주 가벼운 구체성 신호(원하는대로 키워드 튜닝 가능)
+        kws = ["마감", "과제", "일정", "팀", "팀장", "공지", "노션", "디스코드", "멘토", "수업", "난이도"]
+        return sum(1 for k in kws if k in text)
+
+    def length_score(L: int) -> float:
+        # 기본: 길수록 좋은데, 너무 길면 감점
+        if L < min_len:
+            return -10.0 + (L / max(1, min_len))  # 정보 부족 큰 패널티
+        if L > max_len:
+            return 5.0 - ((L - max_len) / 200.0)  # 너무 길면 서서히 감점
+        # 적정 구간에서는 길이 점수 부여
+        return min(8.0, L / 80.0)
+
+    best_idx: Optional[int] = None
+    best_score: float = -1e18
+
+    for idx in dup_group:
+        text = get_text(idx)
+        L = len(text)
+
+        score = 0.0
+
+        # 1) 길이 기반
+        score += length_score(L)
+
+        # 2) 문장 신호 가산
+        score += 0.7 * sentence_signal(text)
+
+        # 3) 구체 키워드 가산
+        score += 0.8 * keyword_signal(text)
+
+        # 4) 마스킹 비율 패널티(높을수록 위험/공격 비중 가능)
+        score -= 20.0 * mask_ratio(text)
+
+        # 5) (선택) 너무 길면 '중간 길이'를 선호하도록 살짝 조정
+        if prefer_mid_len and (L > 200):
+            score -= (L - 200) / 200.0  # 길수록 약간씩 감점
+
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    # 안전 fallback
+    if best_idx is None:
+        best_idx = max(dup_group, key=lambda i: len(get_text(i)))
+
+    return best_idx
 
 
 def dedup_within_week_node(
     state: FeedbackBoardState,
-    embed_fn,  # embedding 함수 주입 (ex. OpenAIEmbeddings().embed_documents)
+    embed_fn
 ) -> FeedbackBoardState:
     posts = state.posts
     # 1) (author_id, week) 기준 그룹핑
@@ -34,38 +109,33 @@ def dedup_within_week_node(
 
     for p in posts:
         # is_active False인 건 dedup 대상에서 제외
-        if p.ai_analysis is None or not p.ai_analysis.is_active:
+        # clean_text 없는 건 dedup 대상 제외
+        if p.ai_analysis is None or not p.ai_analysis.is_active and not p.ai_analysis.clean_text:
             continue
 
-        key = (p.author_id, p.created_at.isocalendar().week)
+        key = p.author_id
         group_map.setdefault(key, []).append(p)
 
     for _, group_posts in group_map.items():
+        # 2) 그룹 내에서 임베딩 유사도 계산 후 중복군 찾기
         if len(group_posts) <= 1:
             continue
         
-        # clean_text 없는 건 dedup 대상 제외
-        valid_posts = [
-            p for p in group_posts
-            if p.ai_analysis and p.ai_analysis.clean_text and p.ai_analysis.is_active
-        ]
-        if len(valid_posts) <= 1:
-            continue
-        
-        texts = [p.ai_analysis.clean_text for p in valid_posts]
+        texts = [p.ai_analysis.clean_text for p in group_posts]
         embeddings = np.array(embed_fn(texts))
 
         sim_matrix = cosine_similarity(embeddings)
 
+        # 3) 유사도 기준으로 중복군 묶기 + 대표 선정 + ai_analysis 필드 업데이트
         visited = set()
-        for i, base_post in enumerate(valid_posts):
+        for i, post in enumerate(group_posts):
             if i in visited:
                 continue
 
             dup_group = [i]
             visited.add(i)
 
-            for j in range(i + 1, len(valid_posts)):
+            for j in range(i + 1, len(group_posts)):
                 if j in visited:
                     continue
                 if sim_matrix[i][j] >= state.input.config.dedup_similarity_threshold:
@@ -78,14 +148,12 @@ def dedup_within_week_node(
             # duplicate group id
             group_id = f"dup_{uuid4().hex}"
 
-            # 대표 선정: clean_text 길이가 가장 긴 것
-            rep_idx = max(
-                dup_group,
-                key=lambda idx: len(valid_posts[idx].ai_analysis.clean_text)
-            )
+            # 대표 선정
+            rep_idx = pick_representative_idx_rule_based(group_posts, dup_group)
+
 
             for idx in dup_group:
-                p = valid_posts[idx]
+                p = group_posts[idx]
                 p.ai_analysis.duplicate_group_id = group_id
 
                 if idx == rep_idx:

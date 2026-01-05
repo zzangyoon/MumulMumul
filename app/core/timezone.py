@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.config import settings
 
 def get_current_timestamp() -> int:
@@ -13,7 +13,7 @@ def get_current_datetime() -> datetime:
 
 def timestamp_to_datetime(timestamp_ms: int) -> datetime:
     """타임스탬프 → datetime (timezone-aware)"""
-    return datetime.fromtimestamp(timestamp_ms / 1000, settings.TIMEZONE)
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
 
 
 def datetime_to_timestamp(dt: datetime) -> int:
@@ -29,6 +29,17 @@ def format_datetime(dt: datetime, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:
         dt = settings.TIMEZONE.localize(dt)
     return dt.strftime(format_str)
 
+def isoformat_to_datetime(iso_str: str) -> datetime:
+    """ISO 8601 문자열 → datetime (timezone-aware)"""
+    dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+    if dt.tzinfo is None:
+        dt = settings.TIMEZONE.localize(dt)
+    return dt
+
+def utc_to_kst(dt: datetime) -> datetime:
+    """UTC datetime → KST datetime (timedelta 사용)"""
+    return dt + timedelta(hours=9)
+
 def datetime_to_custom_str(dt: datetime) -> str:
     """
     datetime 객체를 특정 포맷의 문자열로 변환 > 2025년 12월 31일 오후 11:59분 59초)"""
@@ -36,3 +47,9 @@ def datetime_to_custom_str(dt: datetime) -> str:
 
 def datetime_to_iso_milliseconds(dt: datetime) -> str:
     return dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+if __name__ == "__main__":
+    utc_dt = datetime.utcnow()
+    kst_dt = utc_to_kst(utc_dt)
+    print("UTC datetime:", utc_dt)
+    print("KST datetime:", kst_dt)

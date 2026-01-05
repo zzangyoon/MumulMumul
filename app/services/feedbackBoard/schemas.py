@@ -38,6 +38,7 @@ class FeedbackBoardInsight(BaseModel):
 
     # --------- 운영 대응 ---------
     action_type: Optional[Literal["immediate", "short", "long"]] = None
+    action_reason: Optional[str] = None
 
     # --------- 분석 메타 ---------
     analyzed_at: Optional[datetime] = None
@@ -50,6 +51,7 @@ class FeedbackBoardPost(BaseModel):
     raw_text: str
     created_at: datetime
     ai_analysis: Optional[FeedbackBoardInsight] = None
+    parent_post_id: Optional[str] = None
 
 # =====================================
 # 피드백 보드 주간 리포트 모델 정의
@@ -105,7 +107,7 @@ class WeeklyContextSnapshot(BaseModel):
 
 
 class FeedbackWeeklyReport(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
+    # id: Optional[int] = Field(default=None)
 
     # ---- 식별자 ----
     camp_id: int
@@ -130,6 +132,7 @@ class FeedbackWeeklyReport(BaseModel):
     ops_actions: List[WeeklyOpsAction] = Field(default_factory=list)
     stats: WeeklyStats
     wordcloud: WeeklyWordcloud = Field(default_factory=WeeklyWordcloud)
+    logs: List[FeedbackBoardPost] = Field(default_factory=list)
 
     # ---- 추적/재현성(권장) ----
     # 이 리포트가 어떤 로그들로부터 만들어졌는지 "참조"로 남김
@@ -141,7 +144,6 @@ class FeedbackWeeklyReport(BaseModel):
     # 선택: weekly_report_node 입력 컨텍스트 스냅샷(디버깅/감사)
     context_snapshot: Optional[WeeklyContextSnapshot] = None
 
-    logs: List[FeedbackBoardPost] = Field(default_factory=list)
 
 # =====================================
 # MongoDB 모델 등록

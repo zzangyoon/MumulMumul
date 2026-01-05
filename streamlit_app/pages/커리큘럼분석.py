@@ -8,33 +8,29 @@ from streamlit_app.api.curriculum import (
     save_curriculum_config,
 )
 from streamlit_app.api.camp import fetch_camps
+from streamlit_app.session import get_camp_session
 
-st.set_page_config(layout="wide")
+st.set_page_config(
+    page_title="커리큘럼 분석",
+    layout="wide")
 st.title("📚 커리큘럼 분석")
 
 # --------------------------------
 # 0) 세션 기반 데이터 캐시 설정
 # --------------------------------
+camp_session_cache = get_camp_session()
+
 if "curriculum_session" not in st.session_state:  # 한 번만 초기화
     st.session_state["curriculum_session"] = {
-        "camps": None,                       # fetch_camps() 결과
-        "camp_name_to_id": None,            # {name: id}
         "curriculum_config_by_camp": {},    # {camp_id: config}
         "curriculum_reports": {},           # {f"{camp_id}_{week_index}": payload}
+        "curriculum_raw_text": "",            # 커리큘럼 텍스트 원문
     }
 
 session_cache = st.session_state["curriculum_session"]
-
-# --- 캠프 목록은 세션에 한 번만 저장 ---
-if session_cache["camps"] is None:
-    res = fetch_camps()  # [{camp_id, name, start_date, end_date, ...}, ...] 가정
-    camps = res.get("camps", [])
-    camp_name_to_id = {c["name"]: c["camp_id"] for c in camps}
-    session_cache["camps"] = camps
-    session_cache["camp_name_to_id"] = camp_name_to_id
-else:
-    camps = session_cache["camps"]
-    camp_name_to_id = session_cache["camp_name_to_id"]
+camp_session_cache = st.session_state["camp_session"]
+camps = camp_session_cache["camps"]
+camp_name_to_id = camp_session_cache["camp_name_to_id"]
 
 # --------------------------------
 # 1) 캠프 목록 / 주차 선택
@@ -43,11 +39,7 @@ st.sidebar.header("필터 설정")
 
 camp_name = st.sidebar.selectbox("반 선택", list(camp_name_to_id.keys()))
 camp_id = camp_name_to_id[camp_name]
-
-weeks = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5", "Week 6"]
-selected_week_label = st.sidebar.selectbox("주차 선택", weeks)
-week_index = int(selected_week_label.split()[1])  # "Week 3" -> 3
-week_label = f"{week_index}주차"
+camp = camps[camp_id]
 
 # --------------------------------
 # 2) 커리큘럼 구조 자동 분석
@@ -69,11 +61,13 @@ with tab_analyze:
 
     st.markdown("####  커리큘럼 텍스트 자동 분석")
 
+    # 만약 기존에 raw_text가 저장되어 있다면 기본값으로 세팅
+    st.session_state["curriculum_raw_text"] = config.get("raw_text", "")
     raw_text = st.text_area(
         "커리큘럼 전체 설명을 붙여넣어 주세요. (1주차 ~ N주차)",
-        height=180,
+        height=400,
         key="curriculum_raw_text",
-        placeholder=(
+        placeholder= (
             "예시)\n"
             "1주차: 파이썬 기초, 자료형, 조건문, 반복문\n"
             "2주차: Numpy / Pandas 데이터 처리\n"
@@ -81,16 +75,17 @@ with tab_analyze:
             "4주차: NLP 네트워크, 연관어 분석 ..."
         ),
     )
+    st.markdown(raw_text)
 
     col_auto_1, col_auto_2 = st.columns([2, 3])
     with col_auto_1:
         if st.button("🧠 분석하기", use_container_width=True):
             config_cache[camp_id] = {}
-            if raw_text.strip():
+            if raw_text:
                 with st.spinner("LLM으로 커리큘럼 구조 분석 중..."):
                     auto_config = analyze_curriculum_text(
                         camp_id=camp_id,
-                        raw_text=raw_text,
+                        raw_text=raw_text.strip(),
                     )
                     
                     config_cache[camp_id] = auto_config
