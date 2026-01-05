@@ -49,7 +49,7 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
             curriculum_config_week = curriculum_config.weeks[week_index - 1]
             context += "[이번주 커리큘럼]\n" + " ".join(curriculum_config_week.topics) + "\n"
             
-        leaning_chat_log = fetch_logs_by_camp_id(camp_id, user_id, week_index)
+        leaning_chat_log = fetch_logs_by_camp_id(db, camp_id)
         if leaning_chat_log:
             context += "[학생들의 질문]\n"
             for log in leaning_chat_log:
