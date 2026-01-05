@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from app.services.db_service.curriculum_config import get_curriculum_config_for_camp
+from app.services.db_service.learning_chat_log import fetch_logs_by_camp_id, fetch_weekly_logs
 
 CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[2]   # .../MumulMumul
@@ -37,8 +38,8 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
 
     grade = payload.grade
     user_id = payload.userId
-    camp_id = 2 # get_camp_by_user_id(db, user_id).camp_id
-    week_index = WEEK_INDEX
+    camp_id = 1 # get_camp_by_user_id(db, user_id).camp_id
+    week_index = 6
 
     try:
         context = ""
@@ -47,6 +48,12 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
         if curriculum_config:
             curriculum_config_week = curriculum_config.weeks[week_index - 1]
             context += "[이번주 커리큘럼]\n" + " ".join(curriculum_config_week.topics) + "\n"
+            
+        leaning_chat_log = fetch_logs_by_camp_id(camp_id, user_id, week_index)
+        if leaning_chat_log:
+            context += "[학생의 학습 대화 내용]\n"
+            for log in leaning_chat_log:
+                context += f"- {log['content']}\n"
 
         curriculum_report: CurriculumReport = fetch_curriculum_report(camp_id, week_index)
         if curriculum_report:
