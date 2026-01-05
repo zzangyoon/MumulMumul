@@ -16,8 +16,8 @@ from app.core.schemas import SessionActivityLog  # 프로젝트에 맞게
 
 
 CAMP_ID = 1
-START_DATE = date(2025, 11, 3)
-END_DATE = date(2025, 12, 15)
+START_DATE = datetime(2025, 12, 1)
+END_DATE = datetime(2025, 12, 1) + timedelta(weeks=6)
 
 # 유저 id (너가 준 값)
 USERS = {

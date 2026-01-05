@@ -162,7 +162,7 @@ class AttendanceRuleset(BaseModel):
 # MeetingSummary 모델 등록
 register_mongo_model(
     AttendanceRuleset,
-    collection_name="attendance_rulesets",
+    collection_name="attendance_ruleset",
     indexes=[
         ("id", 1),
         ],
