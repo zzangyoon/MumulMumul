@@ -51,7 +51,7 @@ def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get
             
         leaning_chat_log = fetch_logs_by_camp_id(camp_id, user_id, week_index)
         if leaning_chat_log:
-            context += "[학생의 학습 대화 내용]\n"
+            context += "[학생들의 질문]\n"
             for log in leaning_chat_log:
                 context += f"- {log['content']}\n"
 
