@@ -39,7 +39,7 @@ def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:
         agent = create_agent(
             model=llm,
             tools=tools,
-            response_format=ComposeNoticeResult,   # ✅ Pydantic 강제
+            response_format=ComposeNoticeResult,
             system_prompt=(
                 "너는 부트캠프 운영진을 위한 공지 작성 어시스턴트다.\n"
                 "운영진이 그대로 복사해서 발송할 수 있는 공지문을 작성해라.\n\n"
@@ -50,6 +50,7 @@ def compose_notice_node(state: MessagingAgentState) -> MessagingAgentState:
                 "- 긴급 공지(urgency=high)면 톤을 더 단호하게\n"
                 "- 최종 출력은 response_format 스키마를 따른 구조화 결과로만 낸다\n"
                 "- 제공된 내용 외에 추가 정보는 절대 넣지 않는다\n"
+                "- 공지 제목은 25자 이하로 간결하게 작성\n"
             ),
         )
 
