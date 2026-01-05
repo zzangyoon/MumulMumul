@@ -11,7 +11,7 @@ from requests import Session
 
 from langgraph.types import Command
 
-from app.services.send_dispatch.build_graph import build_preview_dispatch_graph, build_send_dispatch_graph
+from app.services.send_dispatch.build_graph import build_preview_dispatch_graph, build_send_dispatch_graph, build_send_dispatch_graph_with_query_plans
 from app.services.send_dispatch.schemas import MessagingAgentState
 
 async def plan_and_dispatch_dm(
@@ -23,7 +23,7 @@ async def plan_and_dispatch_dm(
     """공지 및 DM 자동화 서비스"""
 
     # graph 기반으로 메시지 생성 및 대상자 선정 로직 구현 필요
-    graph = build_send_dispatch_graph()
+    graph = build_send_dispatch_graph_with_query_plans()
 
     
     state = MessagingAgentState(

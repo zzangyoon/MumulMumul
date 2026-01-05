@@ -236,6 +236,16 @@ query_plans 작성 규칙(중요):
        ]
      - limit=200
      - save_as="target_user_ids"
+  3) attendance_daily에서 정상 출결 user_id 조회:
+     - table="attendance_daily"
+     - fields=["user_id"]
+     - filters=[
+         {{"field":"camp_id","op":"eq","value":"$camp_id"}},
+         {{"field":"attendance_type","op":"eq","value":"ON_TIME"}},
+         {{"field":"date","op":"eq","value":"TODAY"}}
+       ]
+     - limit=200
+     - save_as="target_user_ids"
 
 출력 형식:
 - 반드시 ParsedMessagingRequest(JSON)만 출력한다. (설명/추가 텍스트 금지)

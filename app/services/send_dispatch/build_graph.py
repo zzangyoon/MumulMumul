@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     # ✅ 테스트 2) DM (지각자 타겟)
     test_state_dm_late = MessagingAgentState(
-        request_text="안녕, 머물머물 캠프의 모든 지각자 또는 결석자들에게 QR코드 알림에 대한 DM을 보내줘.",
+        request_text="오늘 정시에 출석한 학생들에게 응원 DM을 보내줘",#"오늘 지각들에게 지각에 대해 체크하는 DM을 성향에 맞게 보내줘",
         current_time=datetime.now(),
     )
 
