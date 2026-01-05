@@ -17,42 +17,35 @@ class DBTable(str, Enum):
 class FilterOp(str, Enum):
     EQ="eq"; IN="in"; LT="lt"; LTE="lte"; GT="gt"; GTE="gte"; BETWEEN="between"; LIKE="like"
 
+from typing import List, Optional, Literal, Any
+from pydantic import BaseModel, Field
+
 class DBFilter(BaseModel):
     field: str
-    op: FilterOp
+    op: Literal["eq", "in", "lt", "lte", "gt", "gte", "between"]
     value: Any
 
 class DBQueryPlan(BaseModel):
-    db_table: DBTable = Field(..., description="조회할 DB 테이블 이름")
-    filters: DBFilter = Field(
-        default_factory=dict,   
-        description="조회 조건 (예: {'camp_name': '머물머물'})"
-    )
-    fields: List[str] = Field(
-        default_factory=list,
-        description="조회할 필드 리스트 (예: ['user_id', 'user_name'])"
-    )
-    purpose: QueryPurpose = QueryPurpose.PERSONALIZATION
+    id: Optional[str] = None
+    table: str = Field(..., description="DB 테이블명 (camp, user, attendance_daily, ...)")
+    fields: List[str] = Field(default_factory=list)
+    filters: List[DBFilter] = Field(default_factory=list)
+    limit: int = 200
+    save_as: Optional[str] = None
 
 class ParsedMessagingRequest(BaseModel):
-    message_type: Literal["notice", "dm"] = "notice"
-    target_scope: Literal["camp_all", "user_list"] = "camp_all"
+    message_type: Literal["notice", "dm"]
+    target_scope: Literal["camp_all", "user_list"]
+    camp_name: Optional[str] = None
+    user_names: Optional[List[str]] = None
+    topic: str
 
-    camp_name: Optional[str] = Field(default=None, description="camp_all에서 사용")
-    user_names: Optional[List[str]] = Field(default=None, description="user_list에서 사용")
-    topic: str = Field(..., description="예: 'QR 코드 출결'")
+    query_plans: List[DBQueryPlan] = Field(default_factory=list)
 
-    query_plans: Optional[List[DBQueryPlan]] = Field(
-        default=[],
-        description="DB 조회가 필요한 경우, 어떤 데이터를 어떻게 조회할지에 대한 계획",
-    )
-
-    # requested_user_ids: Optional[List[int]] = None
-    # target_query: Optional[Dict[str, Any]] = None
-
-    delivery_channel: Literal["stub", "websocket"] = "websocket"
+    delivery_channel: Literal["websocket", "stub"] = "websocket"
     urgency: Literal["normal", "high"] = "normal"
-    language: Literal["ko"] = "ko"
+    language: Literal["ko", "en"] = "ko"
+
 
 class SelectTargetsResult(BaseModel):
     camp_id: Optional[int] = Field(default=None, description="캠프 전체 발송이면 필수")
@@ -91,6 +84,7 @@ class MessagingAgentState(BaseModel):
     request_text: str
     current_time: datetime
 
+    query_results: Dict[str, Any] = Field(default_factory=dict)
     parsed: Optional[ParsedMessagingRequest] = None
 
     camp_id: Optional[int] = None

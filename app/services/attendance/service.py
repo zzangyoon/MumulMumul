@@ -54,11 +54,11 @@ def generate_attendance_report(
     # 4) 성향 분석 JSON 로딩
     tendency_context = get_tendency_profiles_context()
 
-    # 2) 학생별 출결 판정
-    daily_results: List[AttendanceResult] = judge_attendance_for_students(db, camp_id, day_start, day_end, students, ruleset_doc.compiled_rules if ruleset_doc else None)
+    # # 2) 학생별 출결 판정
+    # daily_results: List[AttendanceResult] = judge_attendance_for_students(db, camp_id, day_start, day_end, students, ruleset_doc.compiled_rules if ruleset_doc else None)
 
-    # 3) 출결 정보 저장
-    save_attendance_daily(db, camp_id, target_date, daily_results)
+    # # 3) 출결 정보 저장
+    # save_attendance_daily(db, camp_id, target_date, daily_results)
 
     # 4) 출결 규칙에 따른 일간 출결 집계
     report = aggregate_attendance_daily(

@@ -650,21 +650,36 @@ edited_df = st.data_editor(
 
 # ============================================
 # 7. 날짜별 출결 매트릭스 테이블 (날짜=열, 학생=행)
+#    ✅ 주말 제외 + ✅ 요일 표시
 # ============================================
 
+import pandas as pd
+from datetime import date
+
 st.markdown("---")
-st.markdown("### 🗓️ 날짜별 출결 상세 (학생×날짜)")
+st.markdown("### 🗓️ 날짜별 출결 상세")
 
 # 1) 날짜 범위 만들기: 캠프 시작일 ~ 선택일 (inclusive)
 start_day = camp_start_date.date()
 end_day = selected_date if isinstance(selected_date, date) else selected_date.date()
 
-all_days = pd.date_range(start=start_day, end=end_day, freq="D")
+# ✅ 주말 제외: freq="B" (Business day = 월~금)
+all_days = pd.date_range(start=start_day, end=end_day, freq="B")
+
 # ✅ 내림차순: 최신 날짜가 왼쪽부터 오게
 all_days_desc = list(reversed(all_days))
 
-# 2) 표에 들어갈 날짜 컬럼명(문자열) 만들기 (YYYY-MM-DD)
-date_cols = [d.strftime("%Y-%m-%d") for d in all_days_desc]
+# 2) 표에 들어갈 날짜 컬럼명 만들기: "YYYY-MM-DD(요일)"
+weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
+
+date_cols = [
+    f"{d.strftime('%Y-%m-%d')}({weekday_kr[d.weekday()]})"
+    for d in all_days_desc
+]
+
+# 🔥 rec_map은 'YYYY-MM-DD'로 되어 있으니,
+# 컬럼명(요일 포함) -> 날짜키('YYYY-MM-DD') 매핑을 만들어서 조회에 사용
+col_to_datekey = {col: col[:10] for col in date_cols}
 
 # 3) 출결 타입 표시 스타일 (아이콘)
 def format_attendance_cell(att_type: str) -> str:
@@ -672,7 +687,7 @@ def format_attendance_cell(att_type: str) -> str:
     attendance_records의 attendance_type 값을 표 셀 아이콘으로 표시
     """
     mapping = {
-        "PRESENT": "✅",       # 출석
+        "ON_TIME": "✅",       # 출석
         "LATE": "⏰",          # 지각
         "EARLY_LEAVE": "🏃",   # 조퇴
         "ABSENT": "❌",        # 결석
@@ -681,7 +696,6 @@ def format_attendance_cell(att_type: str) -> str:
         "": "",
     }
     return mapping.get(att_type, "❓")
-
 
 # 4) students_stat 기반으로 "학생별 (date -> attendance_type)" 맵 만들기
 #    attendance_records: [{"date":"2025-11-03", "attendance_type":"PRESENT"}, ...]
@@ -693,15 +707,17 @@ for _, r in df.iterrows():
     # 날짜별 타입 dict로 변환
     rec_map = {}
     for rec in recs:
-        dt_str = (rec.get("date") or "")[:10]
+        dt_str = (rec.get("date") or "")[:10]  # 'YYYY-MM-DD'
         atype = rec.get("attendance_type")
         if dt_str:
             rec_map[dt_str] = atype
 
     row = {"이름": name}
-    # ✅ 날짜는 최신 -> 과거 순서로 컬럼 채우기
-    for d in date_cols:
-        row[d] = format_attendance_cell(rec_map.get(d, ""))  # 없으면 공백
+
+    # ✅ 날짜는 최신 -> 과거 순서로 컬럼 채우기 (주말 제외 + 요일 표기)
+    for col in date_cols:
+        date_key = col_to_datekey[col]  # 'YYYY-MM-DD'
+        row[col] = format_attendance_cell(rec_map.get(date_key, ""))  # 없으면 공백
 
     student_rows.append(row)
 
@@ -717,5 +733,6 @@ st.dataframe(
     hide_index=True,
 )
 
-# st.caption("표기: P(출석) / L(지각) / E(조퇴) / A(결석) / U(미확인)")
 st.caption("표기: ✅ 출석 / ⏰ 지각 / 🏃 조퇴 / ❌ 결석 / ❓ 미확인")
+
+st.json(payload)
