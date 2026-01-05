@@ -144,11 +144,11 @@ class ToolSelector:
             4. get_meeting_context: 회의 전체 컨텍스트
 
             JSON 형식으로 응답하세요:
-            {
+            {{
             "tool": "tool_name",
-            "args": {"meeting_id": "...", "group_id": "...", "query": "..."},
+            "args": {{"meeting_id": "...", "group_id": "...", "query": "..."}},
             "confidence": 0.0~1.0
-            }"""),
+            }}"""),
                         
             ("human", """
             질문: {query}

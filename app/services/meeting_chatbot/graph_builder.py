@@ -2,56 +2,54 @@ from langgraph.graph import StateGraph, END
 from .state import ChatbotState
 from .nodes import (
     agent_decide,
-    execute_tools,
+    execute_actions,
     generate_final_answer,
-    should_execute_tools
+    should_execute_actions
 )
-from .tools import MEETING_TOOLS
 
-def build_graph(llm, vector_store=None, mongo_service=None):
+def build_graph(llm):
     """
-    Tool 기반 Agent Graph 구성
+    Tool-Orchestrated Agent Graph 구성
     
     플로우:
-    1. agent_decide: LLM이 Tool 선택
-    2. execute_tools: 선택된 Tool 실행
+    1. agent_decide: Decision Making (Intent 결정)
+    2. execute_actions: Action Excution (Tool 실행)
     3. generate_final_answer: 최종 답변 생성
-    """
 
-    # LLM에 Tool 바인딩
-    llm_with_tools = llm.bind_tools(MEETING_TOOLS)
+    Decision -> Action -> Observation -> Answer
+    """
 
     graph = StateGraph(ChatbotState)
 
     # 노드 추가
     async def decide_wrapper(st):
-        return await agent_decide(st, llm_with_tools)
+        return await agent_decide(st, llm)
 
     async def execute_wrapper(st):
-        return await execute_tools(st)
+        return await execute_actions(st)
 
     async def answer_wrapper(st):
         return await generate_final_answer(st, llm)
     
     graph.add_node("agent_decide", decide_wrapper)
-    graph.add_node("execute_tools", execute_wrapper)
+    graph.add_node("execute_actions", execute_wrapper)
     graph.add_node("generate_final_answer", answer_wrapper)
 
     # 엣지 구성
     graph.set_entry_point("agent_decide")
 
-    # 조건부 분기
+    # 조건부 분기: Decision -> Action 또는 종료
     graph.add_conditional_edges(
         "agent_decide",
-        should_execute_tools,
+        should_execute_actions,
         {
-            "execute_tools" : "execute_tools",
+            "execute_actions" : "execute_actions",
             "end" : END
         }
     )
 
-    # Tool 실행 -> 답변 생성
-    graph.add_edge("execute_tools", "generate_final_answer")
+    # Action -> 답변 생성
+    graph.add_edge("execute_actions", "generate_final_answer")
     graph.add_edge("generate_final_answer", END)
 
     return graph.compile()

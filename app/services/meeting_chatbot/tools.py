@@ -10,8 +10,21 @@ from app.services.meeting.vectorStore_service import VectorStoreService
 
 logger = setup_logger(__name__)
 
+# ===================================================================
+# 헬퍼 함수
+# ===================================================================
+def _clean_field_value(value: Any, default: str="") -> str:
+    """FieldInfo 객체 또는 None을 안전하게 문자열로 반환"""
+    if value is None:
+        return default
+    
+    if hasattr(value, "__class__") and "FieldInfo" in str(type(value)):
+        logger.debug(f"FieldInfo 객체 감지 및 제거 : {value}")
+        return default
 
-# 최근 회의 조회
+    return str(value).strip()
+
+
 def _get_recent_meeting(group_id: Optional[str] = None) -> Optional[str]:
     """최근 회의 ID 조회"""
     try:
@@ -39,7 +52,9 @@ def _get_recent_meeting(group_id: Optional[str] = None) -> Optional[str]:
 @tool
 def get_recent_meetings(
     group_id: Optional[str] = None,
-    limit: int = 5
+    limit: int = 5,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     최근 회의 목록을 조회합니다.
@@ -53,14 +68,29 @@ def get_recent_meetings(
         회의 목록 (meeting_id, title, date 포함)
     """
     logger.info(f"[Tool] get_recent_meetings: group_id={group_id}, limit={limit}")
+    logger.info(f"start_date = {start_date}, end_date={end_date}")
     
     try:
-        db = SessionLocal()
         
+        group_id = _clean_field_value(group_id) if group_id else None
+        start_date = _clean_field_value(start_date) if start_date else None
+        end_date = _clean_field_value(end_date) if end_date else None
+
+        db = SessionLocal()
         query = db.query(Meeting).filter(Meeting.status == "completed")
         
+        # group_id 필터
         if group_id:
             query = query.filter(Meeting.chat_room_id == group_id)
+
+        # 날짜 필터
+        if start_date:
+            query = query.filter(Meeting.start_time >= start_date)
+            logger.debug(f"날짜 필터 : start >= {start_date}")
+
+        if end_date:
+            query = query.filter(Meeting.start_time <= end_date)
+            logger.debug(f"날짜 필터 : end <= {end_date}")
         
         meetings = query.order_by(Meeting.start_time.desc()).limit(limit).all()
         db.close()
@@ -105,30 +135,17 @@ def get_meeting_summary(
     logger.info(f"[Tool] get_meeting_summary: meeting_id={meeting_id}, group_id={group_id}")
     
     try:
-        if hasattr(meeting_id, "__class__") and "FieldInfo" in str(type(meeting_id)):
-            logger.warning(f"FieldInfo 객체 감지 : {meeting_id}")
-            meeting_id = ""
+        # FieldInfo 처리
+        meeting_id = _clean_field_value(meeting_id) if meeting_id else None
+        group_id = _clean_field_value(group_id) if group_id else None
 
-        if meeting_id is None:
-            meeting_id = ""
-
-        meeting_id = str(meeting_id).strip()
-
-        if hasattr(group_id, '__class__') and 'FieldInfo' in str(type(group_id)):
-            group_id = ""
-
-        if group_id is None:
-            group_id = ""
-            
-        group_id = str(group_id).strip()
-        
-        logger.info(f"  정제된 meeting_id: '{meeting_id}', group_id: '{group_id}'")
+        logger.debug(f"정제된 meeting_id: {meeting_id}, group_id: {group_id}")
 
         # meeting_id가 없으면 최근 회의 자동 조회
         if not meeting_id:
-            logger.info("meeting_id 없음 -> 최근 회의 자동 조회")
-            
-            meeting_id = _get_recent_meeting(group_id if group_id else None)
+            logger.info("meeting_id 없음 -> 최근 회의 자동 조회")            
+            meeting_id = _get_recent_meeting(group_id)
+
             if not meeting_id:
                 return {
                     "error" : "조회 가능한 회의가 없습니다.",
@@ -179,28 +196,31 @@ def search_meeting_transcript(
     Returns:
         관련 segment 목록 (content, speaker, timestamp 포함)
     """
-    logger.info(f"[Tool] search_meeting_transcript: query={query}, meeting_id={meeting_id}")
     
     try:
+        # FieldInfo 처리
+        meeting_id = _clean_field_value(meeting_id) if meeting_id else None
+        group_id = _clean_field_value(group_id) if group_id else None
+
         vector_store = VectorStoreService()
         
-        # 우선순위: meeting_id > group_id > 전체
-        if meeting_id:
-            results = vector_store.search_segments(meeting_id, query, k=k)
-        elif group_id:
-            results = vector_store.search_by_group_id(group_id, query, k=k)
-        else:
-            # 전체 검색 (segments_global)
-            results = vector_store.search_all_segments(query, k=k)
+        # 통합 search() 메서드 사용
+        results = vector_store.search(
+            query = query,
+            k = k,
+            meeting_id = meeting_id,
+            group_id = group_id
+        )
         
         segments = []
         for doc in results:
             segments.append({
                 "content": doc.page_content,
-                "metadata": doc.metadata,
                 "meeting_id": doc.metadata.get("meeting_id"),
                 "speaker": doc.metadata.get("speaker_name"),
-                "timestamp": doc.metadata.get("timestamp_display")
+                "timestamp": doc.metadata.get("timestamp_display"),
+                "confidence": doc.metadata.get("confidence"),
+                "type": doc.metadata.get("type", "voice")
             })
         
         logger.info(f"검색 결과 {len(segments)}개")
@@ -231,21 +251,16 @@ def get_meeting_context(
     logger.info(f"[Tool] get_meeting_context: {meeting_id}")
     
     try:
+        # FieldInfo 처리
+        meeting_id = _clean_field_value(meeting_id) if meeting_id else None
+
         # meeting_id가 없으면 최근 회의 자동 조회
         if not meeting_id:
             logger.info("  meeting_id 없음 → 최근 회의 자동 조회")
-            db = SessionLocal()
-            recent_meeting = db.query(Meeting).filter(
-                Meeting.status == "completed"
-            ).order_by(Meeting.start_time.desc()).first()
-            db.close()
-            
-            if not recent_meeting:
-                return {"error": "조회 가능한 회의가 없습니다."}
-            
-            meeting_id = recent_meeting.meeting_id
-            logger.info(f"  자동 선택된 meeting_id: {meeting_id}")
+            meeting_id = _get_recent_meeting()
 
+            if not meeting_id:
+                return {"error": "조회 가능한 회의가 없습니다."}
         
         mongo_db = get_mongo_db()
         mongo_service = MongoMeetingService(mongo_db)
@@ -280,11 +295,66 @@ def get_meeting_context(
 
 
 # ===================================================================
+# Tool 5: 발화자 검색
+# ===================================================================
+@tool
+def search_by_speaker(
+    speaker_name: str = Field(..., description = "발화자 이름"),
+    query: Optional[str] = Field(None, description = "검색할 내용 (선택)"),
+    meeting_id: Optional[str] = Field(None, description = "특정 회의로 제한"),
+    group_id: Optional[str] = Field(None, description = "특정 그룹으로 제한"),
+    k: int = Field(5, description = "변환 개수")
+) -> List[Dict[str, Any]]:
+    """
+    특정 발화자의 발언을 검색합니다
+
+    사용 시나리오:
+    - "홍길동이 뭐라고 했어?"
+    - "김철수가 API에 대해 한 말 찾아줘"
+    """
+    logger.info(f"[Tool] search_by_speaker: {speaker_name}, query={query}")
+
+    try:
+        # FieldInfo 처리
+        meeting_id = _clean_field_value(meeting_id) if meeting_id else None
+        group_id = _clean_field_value(group_id) if group_id else None
+        query = _clean_field_value(query) if query else None
+
+        vector_store = VectorStoreService()
+
+        # 통합 search() 메서드 사용
+        results = vector_store.search(
+            query = query or "",
+            k = k,
+            meeting_id = meeting_id,
+            group_id = group_id,
+            speaker_name = speaker_name
+        )
+
+        segments = []
+        for doc in results:
+            segments.append({
+                "content": doc.page_content,
+                "speaker": doc.metadata.get("speaker_name"),
+                "timestamp": doc.metadata.get("timestamp_display"),
+                "meeting_id": doc.metadata.get("meeting_id"),
+                "confidence": doc.metadata.get("confidence")
+            })
+
+        logger.info(f"발화자 검색 완료 : {len(segments)}개")
+        return segments
+
+    except Exception as e:
+        logger.error(f"발화자 검색 실패 : {e}", exc_info=True)
+        return []
+
+# ===================================================================
 # Tool List
 # ===================================================================
 MEETING_TOOLS = [
     get_recent_meetings,
     get_meeting_summary,
     search_meeting_transcript,
-    get_meeting_context
+    get_meeting_context,
+    search_by_speaker
 ]

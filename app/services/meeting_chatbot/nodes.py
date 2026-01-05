@@ -2,21 +2,24 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.core.logger import setup_logger
 from app.core.db import SessionLocal
 from app.core.schemas import Meeting
+from app.services.meeting_chatbot.decision_maker import DecisionMaker
 from app.services.meeting_chatbot.tool_selector import ToolSelector
 from app.services.meeting_chatbot.tools import MEETING_TOOLS
+from app.services.meeting_chatbot.agent_structures import Decision, Action, Observation
+import time
 
 
 logger = setup_logger(__name__)
 
 
 # -----------------------------------------------------------
-# 1) Tool 선택 및 실행
+# Node 1 : Decision Making (Agent의 사고)
 # -----------------------------------------------------------
 async def agent_decide(state, llm):
     """
-    하이브리드 방식으로 Tool을 선택합니다.
-    1. 규칙 기반 시도 (90%)
-    2. 실패시 LLM 사용 (10%)
+    Agent의 Decision Making
+
+    Query -> Decisin (Intent + Entities)
     """
     query = state["query"]
     meeting_id = state.get("meeting_id")
@@ -25,175 +28,215 @@ async def agent_decide(state, llm):
     logger.info(f"[Node] agent_decide: {query}")
     logger.info(f"  meeting_id: {meeting_id}, group_id: {group_id}")
 
-    # 하이브리드 Tool 선택
-    tools = await ToolSelector.select_multiple_tools(
-        query, meeting_id, group_id, llm
-    )
+    try:
+        # DecisionMaker로 Decision 생성
+        decisions = await DecisionMaker.make_multi_decisions(
+            query, meeting_id, group_id, llm
+        )
 
-    if tools:
-        tool_calls = []
-        for tool_name, tool_args, confidence in tools:
-            tool_calls.append({
-                "name" : tool_name,
-                "args" : tool_args,
-                "confidence" : confidence
-            })
-        state["tool_calls"] = tool_calls
-        logger.info(f"Tool 선택 완료 : {len(tool_calls)}개")
+        if not decisions:
+            logger.warnging("Decision 생성 실패")
+            state["answer"] = "죄송합니다. 질문을 이해하지 못했습니다."
+            state["confidence"] = 0.0
+            return state
+        
+        # 첫 번째 Decision 저장 (main decision)
+        main_decision = decisions[0]
+        state["decision"] = main_decision
 
-    else:
-        # Tool 선택 실패
-        state["answer"] = "죄송합니다. 질문을 이해하지 못했습니다."
+        # Decision 로깅
+        logger.info("[DECISION MADE]")
+        logger.info(f"  Intent: {main_decision.intent}")
+        logger.info(f"  Confidence: {main_decision.confidence:.2f}")
+        logger.info(f"  Entities: {main_decision.entities}")
+        logger.info(f"  Reasoning: {main_decision.reasoning}")
+        logger.info("="*60)
+
+        # Decision -> Action 변환
+        actions = []
+        for decision in decisions:
+            action = Action(
+                tool_name = decision.intent,
+                tool_args = decision.entities.copy()
+            )
+            actions.append(action)
+
+        state["actions"] = actions
+
+        logger.info(f"[ACTIONS PLANNED] {len(actions)} actions")
+        for i, action in enumerate(actions, 1):
+            logger.info(f"{i}. {action.tool_name}({action.tool_args})")
+
+        return state
+
+    except Exception as e:
+        logger.error(f"Decision 실패 : {e}", exc_info = True)
+        state["answer"] = f"결정 중 오류 발생 : {str(e)}"
         state["confidence"] = 0.0
-        state["sources"] = []
-        state["tool_calls"] = []
-    
-    return state
+        return state
 
 
 # -----------------------------------------------------------
-# 2) Tool 실행 결과 수집
+# Node 2 : Action Execution (Agent 의 행동)
 # -----------------------------------------------------------
-async def execute_tools(state):
+async def execute_actions(state):
     """
-    선택된 Tool들을 실행하고 결과를 수집합니다.
-    """
-    tool_calls = state.get("tool_calls", [])
+    Agent의 Action 수행
 
-    if not tool_calls:
+    Actions -> Observations
+    """
+    actions = state.get("actions", [])
+
+    if not actions:
+        logger.warning("실행할 Action이 없습니다")
         return state
     
-    logger.info(f"[Node] execute_tools: {len(tool_calls)}개 실행")
+    logger.info(f"[Node] execute_actions: {len(actions)}개 실행")
 
-    tool_results = []
-    meeting_id_from_first_tool = None
+    observations = []
+    meeting_id_from_first = None
 
-    for i, tool_call in enumerate(tool_calls):
-        tool_name = tool_call["name"]
-        tool_args = tool_call["args"].copy()
+    for i, action in enumerate(actions, 1):
 
-        # 이전 tool 결과 다음 tool에 전달
-        if meeting_id_from_first_tool and "meeting_id" not in tool_args:
-            if tool_name in ["get_meeting_summary", "get_meeting_context", "search_meeting_transcript"]:
-                tool_args["meeting_id"] = meeting_id_from_first_tool
-                logger.info(f"meeting_id 자동 전달: {meeting_id_from_first_tool}")
-
-        logger.info(f"[{i+1}/{len(tool_calls)}] 실행: {tool_name}({tool_args})")
+        start_time = time.time()
 
         try:
+            # 이전 Action 결과에서 meeting_id 전달
+            tool_args = action.tool_args.copy()
+
+            if meeting_id_from_first and "meeting_id" not in tool_args:
+                if action.tool_name in ["get_meeting_summary", "get_meeting_context", "search_meeting_transcript"]:
+                    tool_args["meeting_id"] = meeting_id_from_first
+                    logger.info(f"  → meeting_id 자동 전달: {meeting_id_from_first}")
+
+            # Tool 찾기
             tool_func = next(
-                (t for t in MEETING_TOOLS if t.name == tool_name),
+                (t for t in MEETING_TOOLS if t.name == action.tool_name),
                 None
             )
 
-            if tool_func:
-                result = tool_func.invoke(tool_args)
+            if not tool_func:
+                raise ValueError(f"Tool not found : {action.tool_name}")
+            
+            # Tool 실행
+            result = tool_func.invoke(tool_args)
+            duration_ms = int((time.time() - start_time) * 1000)
 
-                # 첫번째 tool이 get_recent_meetings인 경우 meeting_id 추출
-                if tool_name == "get_recent_meetings" and isinstance(result, list) and result:
-                    meeting_id_from_first_tool = result[0].get("meeting_id")
-                    logger.info(f"추출된 meeting_id: {meeting_id_from_first_tool}")
+            # 첫 번째 Action이 get_recent_meetings인 경우 meeting_id 추출
+            if action.tool_name == "get_recent_meetings" and isinstance(result, list) and result:
+                meeting_id_from_first = result[0].get("meeting_id")
+                logger.info(f"추출된 meeting_id: {meeting_id_from_first}")
 
-                tool_results.append({
-                    "tool_name" : tool_name,
-                    "tool_args" : tool_args,
-                    "result" : result
-                })
-                logger.info(f"완료 : {tool_name}")
-            else:
-                logger.error(f"Tool not found : {tool_name}")
+            observation = Observation(
+                action=action,
+                result=result,
+                success=True,
+                duration_ms=duration_ms
+            )
+
+            logger.info(f"Success : {duration_ms}ms")
+
+            if isinstance(result, list):
+                logger.info(f" {len(result)} items")
+            elif isinstance(result, dict):
+                logger.info(f"keys : {list(result.keys())}")
 
         except Exception as e:
-            logger.error(f"Tool 실행 실패: {tool_name} - {e}", exc_info=True)
-            tool_results.append({
-                "tool_name": tool_name,
-                "tool_args": tool_args,
-                "result": {"error": str(e)}
-            })
-    
-    state["tool_results"] = tool_results
-    logger.info(f"Tool 실행 완료 : {len(tool_results)}개 결과")
+            duration_ms = int((time.time() - start_time) * 1000)
 
+            observation = Observation(
+                action = action,
+                result = None,
+                success = False,
+                error = str(e),
+                duration_ms = duration_ms
+            )
+
+            logger.error(f" X Failed ({duration_ms}ms) : {e}")
+
+        observations.append(observation)
+
+    state["observations"] = observations
+
+    # 성공/실패 통계
+    success_count = sum(1 for o in observations if o.success)
+    total_duration = sum(o.duration_ms for o in observations)
+
+    logger.info("[EXECUTION SUMMARY]")
+    logger.info(f"  Total: {len(observations)} actions")
+    logger.info(f"  Success: {success_count}")
+    logger.info(f"  Failed: {len(observations) - success_count}")
+    logger.info(f"  Duration: {total_duration}ms")
+    logger.info("="*60)
     return state
 
 
 # -----------------------------------------------------------
-# 3) 최종 답변 생성
+# Node 3 : Response Generation (Agent의 답변)
 # -----------------------------------------------------------
 async def generate_final_answer(state, llm):
-    """
-    Tool 실행 결과를 기반으로 최종 답변을 생성합니다.
 
-    최적화:
-    - 단순 요약 요청 -> MongoDB 결과 직접 반환 (LLM 생략)
-    - 복잡한 질문 -> LLM으로 답변 생성
+    """
+    Agent의 최종 답변 생성
+
+    Observations -> Answer
     """
     query = state["query"]
-    tool_results = state.get("tool_results", [])
+    decision = state.get("decision")
+    observations = state.get("observations", [])
 
-    # Tool 없이 이미 답변이 생성된 경우
-    if state.get("answer") and not tool_results:
-        return state
-    
     logger.info(f"[Node] generate_final_answer")
 
+    # Agent 없이 이미 답변이 생성된 경우
+    if state.get("answer") and not observations:
+        logger.info("이미 답변이 생성됨 (Decision 단계)")
+        return state
+
     # 최적화 : 단순 요약 요청인지 판단
-    if _is_simple_summary_request(tool_results, query):
-        logger.info("단순 요약 요청 → LLM 생략, 직접 반환")
-        return _direct_summary_response(state, tool_results)
+    if _is_simple_summary_request(observations, query):
+        logger.info("단순 요약 요청 -> LLM 생략, 직접 반환")
+        return _direct_summary_response(state, observations)
     
     # 복잡한 질문 -> LLM 사용
-    logger.info("복잡한 질문 → LLM 답변 생성")
-    return await _llm_based_response(state, tool_results, query, llm)
+    logger.info("복잡한 질문 -> LLM 답변 생성")
+    return await _llm_based_response(state, observations, query, llm)
 
 
 # -----------------------------------------------------------
-# 단순 요약 요청 판단
+# Helper Functions
 # -----------------------------------------------------------
-def _is_simple_summary_request(tool_results: list, query: str) -> bool:
+def _is_simple_summary_request(observations: list, query: str) -> bool:
     """
     단순 요약본 요청인지 판단
-    
-    조건:
-    1. Tool이 1개만 실행됨
-    2. get_meeting_summary 또는 get_meeting_context
-    3. 질문이 단순함 ("요약", "정리", "알려줘")
     """
 
     # Tool 1개만 실행?
-    if len(tool_results) != 1:
+    if len(observations) != 1:
         return False
     
-    tool_name = tool_results[0]["tool_name"]
-    result = tool_results[0]["result"]
-
-    if "error" in result:
+    obs = observations[0]
+    if not obs.success:
         return False
-
-    # 요약/컨텍스트 Tool?
+    
+    tool_name = obs.action.tool_name
     if tool_name not in ["get_meeting_summary", "get_meeting_context"]:
         return False
-    
-    # 질문이 단순함?
+
     query_lower = query.lower()
     simple_patterns = ["요약", "정리", "알려줘", "보여줘", "뭐였어", "뭐야"]
 
-    if any(p in query_lower for p in simple_patterns):
-        return True
-    
-    return False
+    return any(p in query_lower for p in simple_patterns)
 
     
 # -----------------------------------------------------------
 # 직접 반환 (LLM 생략)
 # -----------------------------------------------------------
-def _direct_summary_response(state: dict, tool_results: list) -> dict:
+def _direct_summary_response(state: dict, observations: list) -> dict:
     """
     MongoDB 요약본을 직접 반환 (LLM 생략)
     """
-    result = tool_results[0]
-    tool_name = result["tool_name"]
-    data = result["result"]
+    obs = observations[0]
+    data = obs.result
 
     if "error" in data:
         state["answer"] = f"죄송합니다. {data['error']}"
@@ -201,7 +244,9 @@ def _direct_summary_response(state: dict, tool_results: list) -> dict:
         state["sources"] = []
         return state
     
-    # get_meeting_summary 직접 포맷팅
+    tool_name = obs.action.tool_name
+    
+    # get_meeting_summary 포맷팅
     if tool_name == "get_meeting_summary":
         answer_parts = []
         
@@ -237,7 +282,7 @@ def _direct_summary_response(state: dict, tool_results: list) -> dict:
         state["confidence"] = 1.0  # 직접 반환이므로 100% 신뢰도
         state["sources"] = [data["meeting_id"]]
         
-        logger.info("요약본 직접 반환 완료 (LLM 생략)")
+        logger.info("요약본 직접 반환 완료")
 
     # get_meeting_context 직접 포맷팅
     elif tool_name == "get_meeting_context":
@@ -258,7 +303,7 @@ def _direct_summary_response(state: dict, tool_results: list) -> dict:
         state["confidence"] = 1.0
         state["sources"] = [data["meeting_id"]]
         
-        logger.info("컨텍스트 직접 반환 완료 (LLM 생략)")
+        logger.info("컨텍스트 직접 반환 완료")
     
     return state
 
@@ -266,30 +311,26 @@ def _direct_summary_response(state: dict, tool_results: list) -> dict:
 # -----------------------------------------------------------
 # LLM 기반 답변 (복잡한 질문)
 # -----------------------------------------------------------
-async def _llm_based_response(state: dict, tool_results: list, query: str, llm) -> dict:
+async def _llm_based_response(state: dict, observations: list, query: str, llm) -> dict:
     """
-    LLM으로 답변 생성 (복잡한 질문)
-    
-    사용 시나리오:
-    - 다중 Tool 실행
-    - search_meeting_transcript (RAG)
-    - 복잡한 분석/비교 질문
+    LLM 기반 답변 생성
     """
 
-    # Tool 결과 정리
+    # Observation 결과 정리
     tool_context = ""
     sources = []
     
-    for result in tool_results:
-        tool_name = result["tool_name"]
-        data = result["result"]
+    for obs in observations:
+        tool_name = obs.action.tool_name
         
         tool_context += f"\n\n[{tool_name} 결과]:\n"
         
-        if "error" in data:
-            tool_context += f"오류: {data['error']}\n"
+        if not obs.success:
+            tool_context += f"오류: {obs.error}\n"
             continue
         
+        data = obs.result
+
         # 결과 포맷팅
         if tool_name == "get_recent_meetings":
             for meeting in data[:3]:
@@ -311,10 +352,16 @@ async def _llm_based_response(state: dict, tool_results: list, query: str, llm) 
                 if seg.get('meeting_id'):
                     sources.append(seg['meeting_id'])
         
+        elif tool_name == "search_by_speaker":
+            for seg in data[:5]:
+                tool_context += f"- [{seg.get('timestamp', '')}] {seg.get('content', '')[:150]}...\n"
+                if seg.get('meeting_id'):
+                    sources.append(seg['meeting_id'])
+
         elif tool_name == "get_meeting_context":
             tool_context += f"제목: {data.get('title', 'N/A')}\n"
             tool_context += f"요약: {data.get('summary', 'N/A')[:300]}...\n"
-            sources.append(data['meeting_id'])
+            sources.append(data.get('meeting_id'))
     
     # 답변 생성 프롬프트
     prompt = ChatPromptTemplate.from_messages([
@@ -346,7 +393,7 @@ async def _llm_based_response(state: dict, tool_results: list, query: str, llm) 
         })
         
         state["answer"] = response.content
-        state["confidence"] = 0.9 if len(tool_results) >= 2 else 0.7
+        state["confidence"] = 0.9 if len(observations) >= 2 else 0.7
         state["sources"] = list(set(sources))
         
         logger.info("LLM 답변 생성 완료")
@@ -363,9 +410,9 @@ async def _llm_based_response(state: dict, tool_results: list, query: str, llm) 
 # -----------------------------------------------------------
 # 조건 분기 함수
 # -----------------------------------------------------------
-def should_execute_tools(state) -> str:
-    """Tool 실행 여부 결정"""
-    if state.get("tool_calls"):
-        return "execute_tools"
+def should_execute_actions(state) -> str:
+    """Action 실행 여부 결정"""
+    if state.get("actions"):
+        return "execute_actions"
     else:
         return "end"
