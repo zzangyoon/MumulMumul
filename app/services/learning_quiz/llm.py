@@ -30,7 +30,7 @@ quiz_chain = prompt | llm | quiz_parser
 # 5) 외부에서 실행하는 함수 (service에서 불러씀)
 def generate_quiz(context: str, grade: str) -> QuizList:
     """
-    실제로 퀴즈 5개를 생성하는 함수.
+    실제로 퀴즈 3개를 생성하는 함수.
     vectorstore 검색 결과(context), 난이도(grade)를 조합하여
     JSON 구조의 퀴즈 리스트를 반환한다.
     """

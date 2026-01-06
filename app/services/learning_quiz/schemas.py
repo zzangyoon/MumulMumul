@@ -1,6 +1,6 @@
 # app/services/learning_quiz/schemas.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 
 class QuizItem(BaseModel):
@@ -12,7 +12,7 @@ class QuizItem(BaseModel):
 
 
 class QuizList(BaseModel):
-    quiz: List[QuizItem]
+    quiz: List[QuizItem] = Field(max_length=3, min_length=3)
 
 
 class LearningQuizResponse(BaseModel):

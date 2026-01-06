@@ -33,7 +33,7 @@ logger = setup_logger(__name__)
 def create_learning_quiz(payload: LearningQuizRequest, db: Session = Depends(get_db)):
     """
     학습 퀴즈 생성 API
-    - OX 퀴즈 5개 생성
+    - OX 퀴즈 3개 생성
     """
 
     grade = payload.grade

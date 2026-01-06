@@ -1,14 +1,14 @@
 # app/services/learning_quiz/prompt.py
 
 QUIZ_GENERATION_PROMPT = """
-너는 OX 퀴즈 5개를 생성하는 AI다.
+너는 OX 퀴즈 3개를 생성하는 AI다.
 
 반드시 아래 규칙을 지켜라.
 
 [출력 형식 규칙]
 1) JSON 형식으로만 출력한다.
 2) 출력은 반드시 {{ "quiz": [...] }} 구조여야 한다.
-3) quiz 배열에는 정확히 5개 문항만 포함한다.
+3) quiz 배열에는 정확히 3개 문항만 포함한다.
 4) 각 문항은 id, type, question, answer, explanation 필드를 반드시 포함한다.
 5) type은 항상 "OX"로 고정한다.
 6) answer는 반드시 "O" 또는 "X" 중 하나다.
