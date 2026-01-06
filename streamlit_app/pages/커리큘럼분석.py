@@ -75,16 +75,17 @@ with tab_analyze:
             "4주차: NLP 네트워크, 연관어 분석 ..."
         ),
     )
+    st.markdown(raw_text)
 
     col_auto_1, col_auto_2 = st.columns([2, 3])
     with col_auto_1:
         if st.button("🧠 분석하기", use_container_width=True):
             config_cache[camp_id] = {}
-            if raw_text.strip():
+            if raw_text:
                 with st.spinner("LLM으로 커리큘럼 구조 분석 중..."):
                     auto_config = analyze_curriculum_text(
                         camp_id=camp_id,
-                        raw_text=raw_text,
+                        raw_text=raw_text.strip(),
                     )
                     
                     config_cache[camp_id] = auto_config

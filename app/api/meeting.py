@@ -96,26 +96,17 @@ async def end_meeting(
     db: Session = Depends(get_db)
 ):
     try:
-        # 1. 처리 완료 대기
-        await audio_service.wait_for_processing(meeting_id)
-
-        # 2. Meeting 종료 처리
+        # 1. Meeting 즉시 종료 처리
         result = await meeting_service.end_meeting(
             meeting_id = meeting_id,
             db = db
         )
 
-        # RAG 파이프라인 시작
+        # 2. 나머지는 백그라운드 처리
         background_tasks.add_task(
-            pipeline_service.run_rag_pipeline,
-            meeting_id=meeting_id
+            _finalize_meeting_background,
+            meeting_id = meeting_id
         )
-
-        # background_tasks.add_task(
-        #     timeline_service.merge_timeline,
-        #     db=db,
-        #     meeting_id=meeting_id
-        # )
 
         return result
 
@@ -124,3 +115,20 @@ async def end_meeting(
     except Exception as e:
         logger.error(f"End meeting failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+async def _finalize_meeting_background(meeting_id: str):
+    """백그라운드에서 실행되는 회의 마무리 작업"""
+    from app.core.db import SessionLocal
+    db = SessionLocal()
+    try:
+        # 1. 오디오 처리 완료 대기
+        await audio_service.wait_for_processing(meeting_id)
+        
+        # 2. 최종 종료 처리
+        await meeting_service.finalize_meeting(meeting_id, db)
+        
+        # 3. RAG 파이프라인
+        await pipeline_service.run_rag_pipeline(meeting_id = meeting_id)
+    finally:
+        db.close()

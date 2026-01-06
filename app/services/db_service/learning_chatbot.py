@@ -3,6 +3,7 @@ from typing import Dict, List
 from app.core.mongodb import LearningChatLog, get_mongo_db, ChatMessage
 from pymongo.database import Database
 from app.core.db import get_db
+from app.services.db_service.camp import get_camp_by_user_id
 
 mongo_db: Database = get_mongo_db()
 chat_col = mongo_db["learning_chat_logs"]
@@ -32,6 +33,7 @@ def save_learning_chatbot_log(userId: int, sessionId: int, records: list[ChatMes
     try:
         learning_chat_logs = [
             LearningChatLog(
+                camp_id=1,
                 user_id=userId,
                 session_id=sessionId,
                 role=record.role,

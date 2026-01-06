@@ -140,6 +140,6 @@ def run_feedbackboard_pipeline(
     if len(out_state['errors']) > 0:
         print("FeedbackBoard pipeline errors:", out_state['errors'])
         # 필요하면 raise 대신 return out_state 로 바꿔도 됨
-        raise RuntimeError(f"feedbackBoard pipeline failed: {out_state.errors}")
+        raise RuntimeError(f"feedbackBoard pipeline failed: {out_state['errors']}")
 
     return out_state['final']

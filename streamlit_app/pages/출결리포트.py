@@ -133,73 +133,73 @@ st.sidebar.markdown("---")
 # ============================================
 # 2-2. 출결 리포트 조회 및 생성
 # ============================================
+ # 캐시 키: 캠프 + 날짜
+date_key = selected_date
+report_key = f"{camp_id}_{date_key}"
+reports_cache = session_cache["attendance_reports"]
+
+# 1) 세션 캐시에서 먼저 찾기
+payload = reports_cache.get(report_key)
+
+# 2) 세션에 없으면 → 백엔드에서 조회 (이미 생성된 리포트가 있으면 캐시)
+if payload is None:
+    db_report = get_attendance_report(
+        camp_id=camp_id,
+        target_date=date_key,  # 클라이언트 래퍼에서 쿼리 파라미터로 전달
+    )
+    if db_report is not None:
+        payload = db_report
+        reports_cache[report_key] = payload
+    else:
+        payload = None
+
+# 리포트 재생성 버튼 (강제 새로 생성)
+generate_clicked = st.sidebar.button("리포트 생성하기", use_container_width=True)
+if generate_clicked:
+    with st.spinner("리포트 생성 중입니다..."):
+        # POST로 새 리포트 생성 후 응답 payload 받기
+        payload = generate_attendance_report(
+            camp_id=camp_id,
+            target_date=date_key,
+        )
+        session_cache["attendance_reports"][report_key] = payload
+
+# 최종 payload 다시 읽기
+payload = session_cache["attendance_reports"].get(report_key)
+
+# st.json(payload)
+# ============================================
+# 2. payload 유효성 체크
+# ============================================
+if not payload:
+    st.info(
+        "아직 해당 캠프/날짜의 출결 리포트가 없습니다.\n"
+        "왼쪽에서 '리포트 생성하기' 버튼을 눌러 리포트를 생성해 주세요."
+    )
+    st.stop()
+
+
+summary = payload.get("summary", {}) or {}
+students_raw = payload.get("students_stat", []) or []
+top_ops_actions = summary.get("top_ops_actions", [])
+# st.json(summary)
+
+if not students_raw:
+    st.warning("학생별 출결 리포트가 아직 없습니다.")
+    st.stop()
+
+df = pd.DataFrame(students_raw)
+
+# 안전한 기본값 처리
+if "risk_level" not in df.columns:
+    df["risk_level"] = "정상"
+if "pattern_type" not in df.columns:
+    df["pattern_type"] = ""
+if "ops_action" not in df.columns:
+    df["ops_action"] = ""
 
 def display_report():
     st.title("출결 리포트", text_alignment="center")
-    # 캐시 키: 캠프 + 날짜
-    date_key = selected_date
-    report_key = f"{camp_id}_{date_key}"
-    reports_cache = session_cache["attendance_reports"]
-
-    # 1) 세션 캐시에서 먼저 찾기
-    payload = reports_cache.get(report_key)
-
-    # 2) 세션에 없으면 → 백엔드에서 조회 (이미 생성된 리포트가 있으면 캐시)
-    if payload is None:
-        db_report = get_attendance_report(
-            camp_id=camp_id,
-            target_date=date_key,  # 클라이언트 래퍼에서 쿼리 파라미터로 전달
-        )
-        if db_report is not None:
-            payload = db_report
-            reports_cache[report_key] = payload
-        else:
-            payload = None
-
-    # 리포트 재생성 버튼 (강제 새로 생성)
-    generate_clicked = st.sidebar.button("리포트 생성하기", use_container_width=True)
-    if generate_clicked:
-        with st.spinner("리포트 생성 중입니다..."):
-            # POST로 새 리포트 생성 후 응답 payload 받기
-            payload = generate_attendance_report(
-                camp_id=camp_id,
-                target_date=date_key,
-            )
-            session_cache["attendance_reports"][report_key] = payload
-
-    # 최종 payload 다시 읽기
-    payload = session_cache["attendance_reports"].get(report_key)
-
-    # st.json(payload)
-    # ============================================
-    # 2. payload 유효성 체크
-    # ============================================
-    if not payload:
-        st.info(
-            "아직 해당 캠프/날짜의 출결 리포트가 없습니다.\n"
-            "왼쪽에서 '리포트 생성하기' 버튼을 눌러 리포트를 생성해 주세요."
-        )
-        st.stop()
-
-
-    summary = payload.get("summary", {}) or {}
-    students_raw = payload.get("students_stat", []) or []
-    top_ops_actions = summary.get("top_ops_actions", [])
-    # st.json(summary)
-
-    if not students_raw:
-        st.warning("학생별 출결 리포트가 아직 없습니다.")
-        st.stop()
-
-    df = pd.DataFrame(students_raw)
-
-    # 안전한 기본값 처리
-    if "risk_level" not in df.columns:
-        df["risk_level"] = "정상"
-    if "pattern_type" not in df.columns:
-        df["pattern_type"] = ""
-    if "ops_action" not in df.columns:
-        df["ops_action"] = ""
 
     # ============================================
     # 3. 페이지 타이틀 및 요약
@@ -587,56 +587,6 @@ def display_report():
 
     # st.markdown("---")
 
-    # ============================================
-    # 6. 출결 상세 테이블 (운영진 조치 칼럼 포함)
-    # ============================================
-
-    st.markdown("### 📂 출결 상세 테이블")
-
-    columns_map = {
-        "name": "이름",
-        "attendance_rate": "출석률",
-        "absent_count": "결석",
-        "late_count": "지각",
-        "early_leave_count": "조퇴",
-        "pattern_type": "출결 패턴",
-        "personality_type": "성향",
-        "risk_level": "위험 등급",
-        "trend": "최근 변화율",
-        "ops_action": "운영진 조치",
-    }
-    show_cols = [c for c in columns_map.keys() if c in df.columns]
-
-    display_df = df[show_cols].rename(columns=columns_map)
-    display_df["운영진 조치"] = display_df["운영진 조치"].str.replace(
-        ". ", ".\n", regex=False
-    )
-    # 퍼센트/소수 처리
-    if "출석률" in display_df.columns:
-        display_df["출석률"] = (display_df["출석률"] * 100).round(1)
-
-    if "최근 변화율" in display_df.columns:
-        display_df["최근 변화율"] = pd.to_numeric(display_df["최근 변화율"], errors="coerce")
-        display_df["최근 변화율"] = (display_df["최근 변화율"] * 100).round(1)
-
-
-    edited_df = st.data_editor(
-        display_df,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "위험 등급": st.column_config.SelectboxColumn(
-                "위험 등급",
-                options=["고위험", "위험", "주의", "정상"],
-            ),
-            "운영진 조치": st.column_config.TextColumn(
-                "운영진 조치",
-                help="해당 학생에 대해 어떤 조치를 했는지 간단히 기록하세요.",
-                width="large", 
-            ),
-        },
-    )
 
 col1, col2 = st.columns([1,0.5])
 
@@ -646,3 +596,143 @@ with col1:
 with col2: 
     with st.container(height=600, border=True):
         display_chatbot()
+
+# ============================================
+    # 6. 출결 상세 테이블 (운영진 조치 칼럼 포함)
+# ============================================
+
+st.markdown("### 📂 출결 요약 테이블")
+
+columns_map = {
+    "name": "이름",
+    "attendance_rate": "출석률",
+    "absent_count": "결석",
+    "late_count": "지각",
+    "early_leave_count": "조퇴",
+    "pattern_type": "출결 패턴",
+    "personality_type": "성향",
+    "risk_level": "위험 등급",
+    "trend": "최근 변화율",
+    "ops_action": "운영진 조치",
+}
+show_cols = [c for c in columns_map.keys() if c in df.columns]
+
+display_df = df[show_cols].rename(columns=columns_map)
+display_df["운영진 조치"] = display_df["운영진 조치"].str.replace(
+    ". ", ".\n", regex=False
+)
+# 퍼센트/소수 처리
+if "출석률" in display_df.columns:
+    display_df["출석률"] = (display_df["출석률"] * 100).round(1)
+
+if "최근 변화율" in display_df.columns:
+    display_df["최근 변화율"] = pd.to_numeric(display_df["최근 변화율"], errors="coerce")
+    display_df["최근 변화율"] = (display_df["최근 변화율"] * 100).round(1)
+
+
+edited_df = st.data_editor(
+    display_df,
+    hide_index=True,
+    use_container_width=True,
+    num_rows="fixed",
+    column_config={
+        "위험 등급": st.column_config.SelectboxColumn(
+            "위험 등급",
+            options=["고위험", "위험", "주의", "정상"],
+        ),
+        "운영진 조치": st.column_config.TextColumn(
+            "운영진 조치",
+            help="해당 학생에 대해 어떤 조치를 했는지 간단히 기록하세요.",
+            width="large", 
+        ),
+    },
+)
+
+# ============================================
+# 7. 날짜별 출결 매트릭스 테이블 (날짜=열, 학생=행)
+#    ✅ 주말 제외 + ✅ 요일 표시
+# ============================================
+
+import pandas as pd
+from datetime import date
+
+st.markdown("---")
+st.markdown("### 🗓️ 날짜별 출결 상세")
+
+# 1) 날짜 범위 만들기: 캠프 시작일 ~ 선택일 (inclusive)
+start_day = camp_start_date.date()
+end_day = selected_date if isinstance(selected_date, date) else selected_date.date()
+
+# ✅ 주말 제외: freq="B" (Business day = 월~금)
+all_days = pd.date_range(start=start_day, end=end_day, freq="B")
+
+# ✅ 내림차순: 최신 날짜가 왼쪽부터 오게
+all_days_desc = list(reversed(all_days))
+
+# 2) 표에 들어갈 날짜 컬럼명 만들기: "YYYY-MM-DD(요일)"
+weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
+
+date_cols = [
+    f"{d.strftime('%Y-%m-%d')}({weekday_kr[d.weekday()]})"
+    for d in all_days_desc
+]
+
+# 🔥 rec_map은 'YYYY-MM-DD'로 되어 있으니,
+# 컬럼명(요일 포함) -> 날짜키('YYYY-MM-DD') 매핑을 만들어서 조회에 사용
+col_to_datekey = {col: col[:10] for col in date_cols}
+
+# 3) 출결 타입 표시 스타일 (아이콘)
+def format_attendance_cell(att_type: str) -> str:
+    """
+    attendance_records의 attendance_type 값을 표 셀 아이콘으로 표시
+    """
+    mapping = {
+        "ON_TIME": "✅",       # 출석
+        "LATE": "⏰",          # 지각
+        "EARLY_LEAVE": "🏃",   # 조퇴
+        "ABSENT": "❌",        # 결석
+        "UNKNOWN": "❓",       # 미확인
+        None: "",
+        "": "",
+    }
+    return mapping.get(att_type, "❓")
+
+# 4) students_stat 기반으로 "학생별 (date -> attendance_type)" 맵 만들기
+#    attendance_records: [{"date":"2025-11-03", "attendance_type":"PRESENT"}, ...]
+student_rows = []
+for _, r in df.iterrows():
+    name = r.get("name", f"학생 {r.get('user_id', '')}")
+    recs = r.get("attendance_records") or []
+
+    # 날짜별 타입 dict로 변환
+    rec_map = {}
+    for rec in recs:
+        dt_str = (rec.get("date") or "")[:10]  # 'YYYY-MM-DD'
+        atype = rec.get("attendance_type")
+        if dt_str:
+            rec_map[dt_str] = atype
+
+    row = {"이름": name}
+
+    # ✅ 날짜는 최신 -> 과거 순서로 컬럼 채우기 (주말 제외 + 요일 표기)
+    for col in date_cols:
+        date_key = col_to_datekey[col]  # 'YYYY-MM-DD'
+        row[col] = format_attendance_cell(rec_map.get(date_key, ""))  # 없으면 공백
+
+    student_rows.append(row)
+
+matrix_df = pd.DataFrame(student_rows)
+
+# (선택) 보기 좋게: 이름을 인덱스로 두고 싶으면
+# matrix_df = matrix_df.set_index("이름")
+
+# 5) 렌더링 (가로로 길어질 테니 wide + container_width)
+st.dataframe(
+    matrix_df,
+    use_container_width=True,
+    hide_index=True,
+)
+
+st.caption("표기: ✅ 출석 / ⏰ 지각 / 🏃 조퇴 / ❌ 결석 / ❓ 미확인")
+
+st.json(payload)

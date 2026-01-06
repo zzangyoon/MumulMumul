@@ -7,23 +7,23 @@ CURRENT_FILE = Path(__file__).resolve()
 ROOT_DIR = CURRENT_FILE.parents[4]   # .../MumulMumul
 sys.path.append(str(ROOT_DIR))
 
-import json
 from pydantic import BaseModel, Field
 from typing import List
 from langchain.agents import create_agent
 from langchain_core.output_parsers import PydanticOutputParser
 
 from app.core.models import openai_chat_model
-from app.services.send_dispatch.schemas import MessagingAgentState, ParsedMessagingRequest, SelectTargetsResult
+from app.services.send_dispatch.schemas import (
+    MessagingAgentState,
+    ParsedMessagingRequest,
+    SelectTargetsResult,
+)
 
 from app.tools.db_tools import (
     get_camp_id_by_name,
     get_user_ids_by_camp_id,
     resolve_user_ids_by_names,
 )
-
-import json
-from app.services.send_dispatch.schemas import SelectTargetsResult
 
 def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
     print("\n==============================")
@@ -36,13 +36,34 @@ def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
 
         print("[STATE] parsed_request =", parsed.model_dump())
 
+        # ✅ (추가) 이미 상위 노드(execute_query_plans_node 등)에서 타겟이 정해졌으면 덮어쓰지 않는다.
+        # - 빈 리스트([])면 False라서 기존 로직 그대로 진행
+        if getattr(state, "target_user_ids", None):
+            print("[SELECT_TARGETS] Skip tool-based selection: target_user_ids already set")
+            print("[STATE] existing camp_id =", getattr(state, "camp_id", None))
+            print("[STATE] existing target_user_ids count =", len(state.target_user_ids))
+            print("[STATE] existing target_user_ids =", state.target_user_ids)
+
+            # camp_id가 비어있는데 parsed.camp_name이 있다면 최소한 camp_id만 보완 (선택)
+            if not getattr(state, "camp_id", None) and getattr(parsed, "camp_name", None):
+                try:
+                    cid = get_camp_id_by_name.invoke({"camp_name": parsed.camp_name})
+                    state.camp_id = cid
+                    print("[SELECT_TARGETS] Filled camp_id from camp_name:", cid)
+                except Exception as _:
+                    # camp_id 보완은 best-effort (실패해도 타겟팅은 유지)
+                    pass
+
+            state.error = None
+            print("[NODE] select_targets_node END (skip overwrite)")
+            return state
+
         # 1. 모델 및 도구 설정
         llm = openai_chat_model()
         tools = [get_camp_id_by_name, get_user_ids_by_camp_id, resolve_user_ids_by_names]
         parser = PydanticOutputParser(pydantic_object=SelectTargetsResult)
 
         # 2. 에이전트 생성
-        # prompt는 시스템 메시지 성격의 문자열이나 ChatPromptTemplate을 받습니다.
         agent = create_agent(
             model=llm,
             tools=tools,
@@ -60,32 +81,30 @@ def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
         )
 
         print("[LLM] select_targets_node invoke")
-        
-        # 3. 에이전트 호출
-        # create_agent로 만든 에이전트는 보통 입력값을 dict 형태나 메시지 형태로 받습니다.
-        # response_format이 설정되어 있다면 out은 바로 SelectTargetsResult 객체가 됩니다.
 
-        out: SelectTargetsResult = agent.invoke( 
+        # 3. 에이전트 호출
+        out = agent.invoke(
             {
                 "messages": [{
-                    "role": "user", 
+                    "role": "user",
                     "content": f"""
-                        camp_name: {parsed.camp_name}, 
-                        user_names: {parsed.user_names}, 
+                        camp_name: {parsed.camp_name},
+                        user_names: {parsed.user_names},
                         target_scope: {parsed.target_scope},
                         이 내용에 따라 최종 발송 대상의 camp_id와 user_id 목록을 반환해줘.
-                    """}]
+                    """
+                }]
             }
         )
 
         print("[LLM] select_targets_node output")
         print("==============================")
         print("[OUTPUT] SelectTargetsResult:")
-        print(out['messages'][-1].content)
+        print(out["messages"][-1].content)
         print("==============================")
 
         # 4. State 업데이트
-        content = out['messages'][-1].content
+        content = out["messages"][-1].content
         content_json = SelectTargetsResult.model_validate_json(content)
         state.camp_id = content_json.camp_id
         state.target_user_ids = content_json.target_user_ids
@@ -105,6 +124,7 @@ def select_targets_node(state: MessagingAgentState) -> MessagingAgentState:
         state.camp_id = None
         state.target_user_ids = []
         return state
+
 
 if __name__ == "__main__":
     from datetime import datetime

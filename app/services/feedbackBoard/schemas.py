@@ -107,7 +107,7 @@ class WeeklyContextSnapshot(BaseModel):
 
 
 class FeedbackWeeklyReport(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")
+    # id: Optional[int] = Field(default=None)
 
     # ---- 식별자 ----
     camp_id: int

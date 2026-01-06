@@ -22,6 +22,7 @@ def get_attendance_report(
     )
     if not doc:
         return None
+    print(doc["camp_id"])
     return AttendanceReport(**doc)
 
 
