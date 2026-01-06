@@ -210,7 +210,7 @@ class MeetingService:
             db.rollback()
             raise
     
-    # 회의 종료
+    # 회의 종료중
     @staticmethod
     async def end_meeting(
         meeting_id: str,
@@ -242,7 +242,7 @@ class MeetingService:
             logger.info(f"Duration: {duration_ms}ms ({duration_ms/60000:.2f} min)")
             
             # 3. 회의 상태 업데이트
-            meeting.status = "completed"
+            meeting.status = "ending"
             meeting.end_time = end_time_iso
             meeting.duration_ms = duration_ms
             meeting.updated_at = end_time_iso
@@ -273,7 +273,7 @@ class MeetingService:
 
             return EndMeetingResponse(
                 meeting_id = meeting_id,
-                status = "completed",
+                status = "ending",
                 duration_ms = duration_ms,
                 participant_count = meeting.participant_count,
                 total_segments = total_segments
@@ -285,3 +285,43 @@ class MeetingService:
             logger.error(f"Failed to end meeting: {e}", exc_info=True)
             db.rollback()
             raise
+
+
+    # 회의 최종 종료 (백그라운드용)
+    @staticmethod
+    async def finalize_meeting(
+        meeting_id: str,
+        db: Session
+    ) -> None:
+        """
+        백그라운드에서 호출되어 회의를 최종 완료 상태로 변경.
+        """
+        try:
+            logger.info(f"Finalizing meeting: {meeting_id}")
+
+            meeting = db.query(Meeting).filter(
+                Meeting.meeting_id == meeting_id
+            ).first()
+
+            if not meeting:
+                logger.error(f"Meeting not found for finalization: {meeting_id}")
+                return
+
+            if meeting.status != "ending":
+                logger.warning(f"Meeting not in 'ending' status: {meeting.status}")
+                return
+
+            # 최종 상태로 변경
+            end_dt = get_current_datetime()
+            end_time_iso = format_datetime(end_dt, "%Y-%m-%dT%H:%M:%S%z")
+
+            meeting.status = "completed"
+            meeting.updated_at = end_time_iso
+
+            db.commit()
+
+            logger.info(f"Meeting finalized: {meeting_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to finalize meeting: {e}", exc_info=True)
+            db.rollback()
