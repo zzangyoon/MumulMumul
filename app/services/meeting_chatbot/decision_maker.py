@@ -4,6 +4,7 @@ from app.core.logger import setup_logger
 from langchain_core.prompts import ChatPromptTemplate
 from .agent_structures import Decision, IntentType
 from datetime import datetime
+from calendar import monthrange
 import json
 
 logger = setup_logger(__name__)
@@ -15,6 +16,17 @@ class DecisionMaker:
 
     규칙 기반(90%) + LLM(10%) 하이브리드 방식
     """
+
+    # ===================================================================
+    # 패턴 우선순위 정의 (숫자가 높을수록 우선)
+    # ===================================================================
+    PATTERN_PRIORITY = {
+        "get_recent_meetings": 100,
+        "search_by_speaker": 95,
+        "search_meeting_transcript": 90,
+        "get_meeting_context": 80,
+        "get_meeting_summary": 70,
+    }
 
     # ===================================================================
     # 패턴 정의
@@ -32,16 +44,26 @@ class DecisionMaker:
             r"\d{4}년\s*\d{1,2}월.*회의",
             r"\d{1,2}월.*회의"
         ],
+
+        "search_by_speaker": [
+            r"(누가|누구).*(말했|언급|얘기)",
+            r"[\w가-힣]+\s*(이|가)\s*.*(말|얘기|언급)",
+            r"[\w가-힣]+\s*의\s*(의견|생각|말)",
+            r"[\w가-힣]+\s*.*(뭐라고|무슨\s*말)"
+        ],
         
         "get_meeting_summary": [
-            r"요약(해|본)?",
-            r"정리(해|본)?",
+            r"^요약(해|본)?\??$",
+            r"^정리(해|본)?\??$",
+            # r"요약(해|본)?",
+            # r"정리(해|본)?",
             r"결정\s*사항",
             r"액션\s*아이템",
             r"핵심\s*내용",
             r"주요\s*포인트",
             r"다음\s*안건",
-            r"뭐(야|였어|였지)",
+            r"^뭐야\??$",
+            # r"뭐(야|였어|였지)",
             r"무엇"
         ],
         
@@ -50,13 +72,6 @@ class DecisionMaker:
             r".*관련.*내용",
             r"어떤.*발언",
             r".*토론.*내용"
-        ],
-        
-        "search_by_speaker": [
-            r"(누가|누구).*(말했|언급|얘기)",
-            r"[\w가-힣]+\s*(이|가)\s*.*(말|얘기|언급)",
-            r"[\w가-힣]+\s*의\s*(의견|생각|말)",
-            r"[\w가-힣]+\s*.*(뭐라고|무슨\s*말)"
         ],
         
         "get_meeting_context": [
@@ -72,7 +87,7 @@ class DecisionMaker:
     # Entity 추출 패턴
     # ===================================================================
     ENTITY_PATTERNS = {
-        "speaker": r"([\w가-힣]+)\s*(이|가|의)\s*(말|얘기|의견)",
+        "speaker": r"([\w가-힣]+?)(?:이|가|의)?\s*(?:뭐라고|말했|얘기|의견|언급)",
         "topic": r"([\w가-힣]+)\s*(에\s*대해|관련|관해서)",
         "meeting_id": r"회의\s*([\w\d_-]+)",
         "full_date": r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일",
@@ -101,6 +116,8 @@ class DecisionMaker:
 
         # Entity 추출
         entities = DecisionMaker._extract_entities(query, meeting_id, group_id)
+
+        matches = []
         
         # 1. meeting_id 명시된 경우
         if meeting_id or re.search(r"회의\s*[\w\d_-]+", query):
@@ -108,42 +125,67 @@ class DecisionMaker:
             for tool_name, patterns in DecisionMaker.PATTERNS.items():
                 for pattern in patterns:
                     if re.search(pattern, query_lower):
-                        # meeting_id 있으면 요약으로 전환
-                        if tool_name == "get_recent_meetings":
-                            tool_name = "get_meeting_summary"
-                        
-                        return Decision(
-                            intent = tool_name,
-                            confidence = 0.9,
-                            entities = entities,
-                            reasoning = f"규칙 매칭 : meeting_id 명시 + 패턴 '{pattern}'"
-                            
-                        )
+                        priority = DecisionMaker.PATTERN_PRIORITY.get(tool_name, 0)
+                        matches.append((priority, tool_name, pattern))
+            
+            if matches:
+                # 우선순위 높은 것 선택
+                matches.sort(reverse=True, key=lambda x: x[0])
+                _, tool_name, pattern = matches[0]
+                
+                if tool_name == "get_recent_meetings":
+                    tool_name = "get_meeting_summary"
+                
+                logger.info(f"[Rule] 매칭: {tool_name} (패턴: {pattern}, 우선순위: {matches[0][0]})")
+                
+                return Decision(
+                    intent=tool_name,
+                    confidence=0.9,
+                    entities=entities,
+                    reasoning=f"규칙 매칭: meeting_id 명시 + 패턴 '{pattern}' (우선순위: {matches[0][0]})"
+                )
         
         # 2. group_id 있는 경우
         if group_id:
             for tool_name, patterns in DecisionMaker.PATTERNS.items():
                 for pattern in patterns:
                     if re.search(pattern, query_lower):
-                        return Decision(
-                            intent = tool_name,
-                            confidence = 0.85,
-                            entities = entities,
-                            reasoning = f"규칙 매칭 : group_id 존재 + 패턴 '{pattern}'"
-                        )
+                        priority = DecisionMaker.PATTERN_PRIORITY.get(tool_name, 0)
+                        matches.append((priority, tool_name, pattern))
+            
+            if matches:
+                matches.sort(reverse=True, key=lambda x: x[0])
+                _, tool_name, pattern = matches[0]
+                
+                logger.info(f"[Rule] 매칭: {tool_name} (패턴: {pattern}, 우선순위: {matches[0][0]})")
+                
+                return Decision(
+                    intent=tool_name,
+                    confidence=0.85,
+                    entities=entities,
+                    reasoning=f"규칙 매칭: group_id 존재 + 패턴 '{pattern}' (우선순위: {matches[0][0]})"
+                )
         
         # 3. 일반 패턴 매칭
         for tool_name, patterns in DecisionMaker.PATTERNS.items():
             for pattern in patterns:
                 if re.search(pattern, query_lower):
-                    logger.info(f"[Rule] 매칭: {tool_name} (패턴: {pattern})")
-                    
-                    return Decision(
-                        intent = tool_name,
-                        confidence = 0.8,
-                        entities = entities,
-                        reasoning = f"규칙 매칭 : 패턴 '{pattern}'"
-                    )
+                    priority = DecisionMaker.PATTERN_PRIORITY.get(tool_name, 0)
+                    matches.append((priority, tool_name, pattern))
+        
+        if matches:
+            # 우선순위 높은 것 선택
+            matches.sort(reverse=True, key=lambda x: x[0])
+            _, tool_name, pattern = matches[0]
+            
+            logger.info(f"[Rule] 매칭: {tool_name} (패턴: {pattern}, 우선순위: {matches[0][0]})")
+            
+            return Decision(
+                intent=tool_name,
+                confidence=0.8,
+                entities=entities,
+                reasoning=f"규칙 매칭: 패턴 '{pattern}' (우선순위: {matches[0][0]})"
+            )
         
         # 패턴 매칭 실패
         return None
@@ -171,6 +213,7 @@ class DecisionMaker:
         )
         if speaker_match:
             entities["speaker"] = speaker_match.group(1)
+            logger.debug(f"발화자 추출: {entities['speaker']}")
 
         # 토픽 추출
         topic_match = re.search(
@@ -197,7 +240,6 @@ class DecisionMaker:
             year, month = year_month_match.groups()
             
             # 해당 월의 첫날과 마지막 날
-            from calendar import monthrange
             last_day = monthrange(int(year), int(month))[1]
             
             entities["start_date"] = f"{year}-{int(month):02d}-01T00:00:00"
@@ -219,8 +261,6 @@ class DecisionMaker:
             month_match = re.search(DecisionMaker.ENTITY_PATTERNS["month_only"], query)
             month = month_match.group(1)
             current_year = datetime.now().year
-            
-            from calendar import monthrange
             last_day = monthrange(current_year, int(month))[1]
             
             entities["start_date"] = f"{current_year}-{int(month):02d}-01T00:00:00"
@@ -362,8 +402,11 @@ class DecisionMaker:
         decisions = []
         
         # 패턴 1: "지난 회의 요약" (다중 Action)
-        if re.search(r"(지난|최근|이전).*회의.*(요약|정리|알려)", query_lower):
+        if re.search(r"(지난|최근|이전)\s*(회의|미팅)", query_lower):
             logger.info("[Multi] 지난 회의 → 요약 파이프라인")
+
+            # Entity 추출 (speaker 포함)
+            entities = DecisionMaker._extract_entities(query, meeting_id, group_id)
             
             # Decision 1 : 최근 회의 조회
             decisions.append(Decision(
@@ -373,12 +416,25 @@ class DecisionMaker:
                 reasoning = "다중 액션 : 최근 회의 조회"
             ))
             
-            # Decision 2 : 요약 조회
+            # Decision 2 : 의도별 분기
+            if re.search(r"(요약|정리|결정|액션|핵심)", query_lower):
+                next_intent = "get_meeting_summary"
+                next_entities = {}
+            elif re.search(r"(누가|뭐라고|말했|언급)", query_lower):
+                next_intent = "search_by_speaker"
+                next_entities = {"speaker_name": entities.get("speaker", "")}
+            elif re.search(r"(전체|전문|처음부터)", query_lower):
+                next_intent = "get_meeting_context"
+                next_entities = {}
+            else:
+                next_intent = "search_meeting_transcript"
+                next_entities = {"query": query}
+
             decisions.append(Decision(
-                intent="get_meeting_summary",
-                confidence=0.9,
-                entities={},  # 첫 번째 결과의 meeting_id 사용
-                reasoning="다중 액션 : 요약 조회"
+                intent=next_intent,
+                confidence=0.85,
+                entities=next_entities,
+                reasoning="지난 회의 기반 후속 질의"
             ))
             
             return decisions

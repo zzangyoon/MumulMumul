@@ -331,37 +331,81 @@ async def _llm_based_response(state: dict, observations: list, query: str, llm) 
         
         data = obs.result
 
-        # 결과 포맷팅
-        if tool_name == "get_recent_meetings":
-            for meeting in data[:3]:
-                tool_context += f"- {meeting['title']} ({meeting['meeting_id']})\n"
-                tool_context += f"  시작: {meeting['start_time']}\n"
-                sources.append(meeting['meeting_id'])
-        
-        elif tool_name == "get_meeting_summary":
-            tool_context += f"요약: {data['summary_text']}\n"
-            if data.get('key_points'):
-                tool_context += "\n핵심 포인트:\n"
-                for kp in data['key_points'][:5]:
-                    tool_context += f"  - {kp}\n"
-            sources.append(data['meeting_id'])
-        
-        elif tool_name == "search_meeting_transcript":
-            for seg in data[:5]:
-                tool_context += f"- [{seg['timestamp']}] [{seg['speaker']}] {seg['content'][:150]}...\n"
-                if seg.get('meeting_id'):
-                    sources.append(seg['meeting_id'])
-        
-        elif tool_name == "search_by_speaker":
-            for seg in data[:5]:
-                tool_context += f"- [{seg.get('timestamp', '')}] {seg.get('content', '')[:150]}...\n"
-                if seg.get('meeting_id'):
-                    sources.append(seg['meeting_id'])
+        if isinstance(data, dict) and "error" in data:
+            tool_context += f"오류: {data['error']}\n"
+            continue
 
-        elif tool_name == "get_meeting_context":
-            tool_context += f"제목: {data.get('title', 'N/A')}\n"
-            tool_context += f"요약: {data.get('summary', 'N/A')[:300]}...\n"
-            sources.append(data.get('meeting_id'))
+        # 결과 포맷팅
+        try:
+            if tool_name == "get_recent_meetings":
+                if isinstance(data, list) and data:
+                    for meeting in data[:3]:
+                        tool_context += f"- {meeting.get('title', 'N/A')} ({meeting.get('meeting_id', 'N/A')})\n"
+                        tool_context += f"  시작: {meeting.get('start_time', 'N/A')}\n"
+                        if meeting.get('meeting_id'):
+                            sources.append(meeting['meeting_id'])
+                else:
+                    tool_context += "조회된 회의가 없습니다.\n"
+            
+            elif tool_name == "get_meeting_summary":
+                summary_text = data.get('summary_text', '요약 없음')
+                tool_context += f"요약: {summary_text}\n"
+                
+                key_points = data.get('key_points', [])
+                if key_points:
+                    tool_context += "\n핵심 포인트:\n"
+                    for kp in key_points[:5]:
+                        tool_context += f"  - {kp}\n"
+                
+                meeting_id = data.get('meeting_id')
+                if meeting_id:
+                    sources.append(meeting_id)
+            
+            elif tool_name == "search_meeting_transcript":
+                if isinstance(data, list) and data:
+                    for seg in data[:5]:
+                        timestamp = seg.get('timestamp', 'N/A')
+                        speaker = seg.get('speaker', 'N/A')
+                        content = seg.get('content', '')[:150]
+                        tool_context += f"- [{timestamp}] [{speaker}] {content}...\n"
+                        
+                        if seg.get('meeting_id'):
+                            sources.append(seg['meeting_id'])
+                else:
+                    tool_context += "검색 결과가 없습니다.\n"
+            
+            elif tool_name == "search_by_speaker":
+                if isinstance(data, list) and data:
+                    for seg in data[:5]:
+                        timestamp = seg.get('timestamp', '')
+                        content = seg.get('content', '')[:150]
+                        tool_context += f"- [{timestamp}] {content}...\n"
+                        
+                        if seg.get('meeting_id'):
+                            sources.append(seg['meeting_id'])
+                else:
+                    tool_context += "검색 결과가 없습니다.\n"
+
+            elif tool_name == "get_meeting_context":
+                title = data.get('title', 'N/A')
+                summary = data.get('summary', 'N/A')
+                tool_context += f"제목: {title}\n"
+                tool_context += f"요약: {summary[:300]}...\n"
+                
+                meeting_id = data.get('meeting_id')
+                if meeting_id:
+                    sources.append(meeting_id)
+        
+        except Exception as e:
+            logger.error(f"Tool 결과 포맷팅 실패 ({tool_name}): {e}", exc_info=True)
+            tool_context += f"결과 처리 중 오류 발생\n"
+    
+    # Tool 결과가 없거나 모두 실패한 경우
+    if not tool_context.strip() or not sources:
+        state["answer"] = "죄송합니다. 요청하신 정보를 찾을 수 없습니다."
+        state["confidence"] = 0.0
+        state["sources"] = []
+        return state
     
     # 답변 생성 프롬프트
     prompt = ChatPromptTemplate.from_messages([

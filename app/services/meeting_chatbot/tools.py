@@ -180,10 +180,10 @@ def get_meeting_summary(
 # ===================================================================
 @tool
 def search_meeting_transcript(
-    query: str = Field(..., description="검색할 질문/키워드"),
-    meeting_id: Optional[str] = Field(None, description="특정 회의에서만 검색"),
-    group_id: Optional[str] = Field(None, description="특정 그룹 회의들에서 검색"),
-    k: int = Field(5, description="반환할 결과 개수")
+    query: str,
+    meeting_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    k: int = 5
 ) -> List[Dict[str, Any]]:
     """
     회의 전사본에서 관련 내용을 벡터 검색합니다.
@@ -299,11 +299,11 @@ def get_meeting_context(
 # ===================================================================
 @tool
 def search_by_speaker(
-    speaker_name: str = Field(..., description = "발화자 이름"),
-    query: Optional[str] = Field(None, description = "검색할 내용 (선택)"),
-    meeting_id: Optional[str] = Field(None, description = "특정 회의로 제한"),
-    group_id: Optional[str] = Field(None, description = "특정 그룹으로 제한"),
-    k: int = Field(5, description = "변환 개수")
+    speaker_name: str,
+    query: Optional[str] = None,
+    meeting_id: Optional[str] = None,
+    group_id: Optional[str] = None,
+    k: int = 5
 ) -> List[Dict[str, Any]]:
     """
     특정 발화자의 발언을 검색합니다
