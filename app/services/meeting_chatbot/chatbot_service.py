@@ -3,21 +3,40 @@ from app.config import settings
 from langchain_openai import ChatOpenAI
 from .state import ChatbotState
 from .graph_builder import build_graph
+from .graph_builder_llm import build_graph_llm
 from .agent_structures import AgentTrace
 import time
+import os
 
 logger = setup_logger(__name__)
+
+# LangSmith 환경변수 설정
+if settings.LANGCHAIN_API_KEY:
+    os.environ["LANGCHAIN_TRACING_V2"] = str(settings.LANGCHAIN_TRACING_V2).lower()
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.LANGCHAIN_ENDPOINT
+    os.environ["LANGCHAIN_API_KEY"] = settings.LANGCHAIN_API_KEY
+    os.environ["LANGCHAIN_PROJECT"] = settings.LANGCHAIN_PROJECT
+    logger.info(f"LangSmith enabled: {settings.LANGCHAIN_PROJECT}")
 
 
 class MeetingChatbotService:
     """
-    Tool-Orchestrated Agent 기반 회의 챗봇 서비스
+    회의 챗봇 서비스
 
-    Decision -> Action -> Observation
+    mode:
+    - "rule": 규칙 기반 (기존, 빠름)
+    - "llm": LLM 기반 (새로운, 정확함)
+
+    rule mode:
+        Tool-Orchestrated Agent 기반 회의 챗봇 서비스
+        Decision -> Action -> Observation
+        테스트용 : __init__() 에서 mode: str = "rule" 로 변경해서 테스트
     """
 
-    def __init__(self):
-        logger.info("Initializing MeetingChatbotService (Tool-Orchestrated Agent) ...")
+    def __init__(self, mode: str = "llm"):
+        logger.info("Initializing MeetingChatbotService (mode={mode} ...")
+
+        self.mode = mode
 
         self.llm = ChatOpenAI(
             model=settings.LLM_MODEL,
@@ -25,8 +44,13 @@ class MeetingChatbotService:
             temperature=0.3
         )
 
-        # Agent Graph 빌드
-        self.graph = build_graph(llm=self.llm)
+        # 모드에 따라 Graph 선택
+        if mode == "llm":
+            self.graph = build_graph_llm(llm=self.llm)
+            logger.info("LLM 기반 Agent Graph 초기화")
+        else:
+            self.graph = build_graph(llm=self.llm)
+            logger.info("규칙 기반 Agent Graph 초기화")
 
         logger.info("MeetingChatbotService initialized")
 
@@ -65,9 +89,20 @@ class MeetingChatbotService:
             "needs_more_info": False
         }
 
+        # LangSmith config (트레이싱용)
+        config = {
+            "run_name": f"[{self.mode}] {query[:50]}",
+            "metadata": {
+                "mode": self.mode,
+                "meeting_id": meeting_id,
+                "group_id": group_id
+            },
+            "tags": [self.mode, "meeting-chatbot"]
+        }
+
         try:
             # Agent Graph 실행
-            final_state = await self.graph.ainvoke(initial_state)
+            final_state = await self.graph.ainvoke(initial_state, config=config)
 
             total_duration = int((time.time() - start_time) * 1000)
 
@@ -91,7 +126,8 @@ class MeetingChatbotService:
                 "confidence": final_state["confidence"],
                 "sources": final_state.get("sources", []),
                 "trace": trace.to_dict(),
-                "relevant_segments": final_state.get("relevant_segments", [])
+                "relevant_segments": final_state.get("relevant_segments", []),
+                "mode": self.mode
             }
             return response
         
@@ -103,5 +139,6 @@ class MeetingChatbotService:
                 "confidence": 0.0,
                 "sources": [],
                 "trace": None,
-                "relevant_segments": []
+                "relevant_segments": [],
+                "mode": self.mode
             }
