@@ -5,6 +5,7 @@ from .state import ChatbotState
 from .graph_builder import build_graph
 from .graph_builder_llm import build_graph_llm
 from .agent_structures import AgentTrace
+from .semantic_cache import get_semantic_cache
 import time
 import os
 
@@ -142,3 +143,13 @@ class MeetingChatbotService:
                 "relevant_segments": [],
                 "mode": self.mode
             }
+
+    def get_cache_stats(self) -> dict:
+        """캐시 통계 반환"""
+        cache = get_semantic_cache()
+        return cache.get_stats()
+
+    def clear_cache(self):
+        """캐시 전체 삭제"""
+        cache = get_semantic_cache()
+        cache.clear()

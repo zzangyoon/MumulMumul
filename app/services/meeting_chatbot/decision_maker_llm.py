@@ -10,13 +10,19 @@ from typing import Optional, List
 from langchain_core.prompts import ChatPromptTemplate
 from app.core.logger import setup_logger
 from .agent_structures import Decision
+from .semantic_cache import get_semantic_cache
 
 logger = setup_logger(__name__)
 
 
 class LLMDecisionMaker:
     """
-    LLM 기반 Decision Maker
+    LLM 기반 Decision Maker (시맨틱 캐싱 적용)
+
+    흐름:
+    1. 캐시 조회 (유사 질문 검색)
+    2. Cache HIT → 캐시된 Decision 반환
+    3. Cache MISS → LLM 호출 → 캐시 저장
     
     - 규칙 기반 대비 정확도 향상
     - 다양한 표현 인식 가능
@@ -91,15 +97,49 @@ class LLMDecisionMaker:
         query: str,
         meeting_id: Optional[str],
         group_id: Optional[str],
-        llm
+        llm,
+        use_cache: bool = True  # 캐싱 활성화 옵션
     ) -> List[Decision]:
         """
-        LLM 기반 Decision 생성
+        LLM 기반 Decision 생성 (시맨틱 캐싱 적용)
         
         Returns:
             List[Decision]: 실행할 Decision 목록
         """
         logger.info(f"[LLM Decision] query: {query}")
+
+        cache = get_semantic_cache()
+
+        # ===== 1. 캐시 조회 =====
+        if use_cache:
+            cache_result = await cache.get(query, meeting_id, group_id)
+            
+            if cache_result:
+                cached_decisions, similarity = cache_result
+                
+                # 캐시된 Decision 복원
+                decisions = []
+                for d in cached_decisions:
+                    # meeting_id, group_id 갱신 (현재 컨텍스트로)
+                    entities = d.get("entities", {}).copy()
+                    if meeting_id:
+                        entities["meeting_id"] = meeting_id
+                    if group_id:
+                        entities["group_id"] = group_id
+                    
+                    decision = Decision(
+                        intent=d["intent"],
+                        confidence=d.get("confidence", 0.8),
+                        entities=entities,
+                        reasoning=f"[Cached] {d.get('reasoning', '')} (similarity={similarity:.3f})"
+                    )
+                    decisions.append(decision)
+                
+                logger.info(f"[Cache HIT] {len(decisions)} decisions 반환")
+                return decisions
+
+        # ===== 2. LLM 호출 (Cache MISS) =====
+        logger.info("[Cache MISS] LLM 호출")
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", LLMDecisionMaker.SYSTEM_PROMPT),
@@ -128,6 +168,8 @@ class LLMDecisionMaker:
 
             # Decision 목록 생성
             decisions = []
+            decisions_for_cache = []  # 캐시용 (dict 형태)
+
             for action in data.get("actions", []):
                 # 기본 entities 구성
                 entities = action.get("args", {})
@@ -146,6 +188,18 @@ class LLMDecisionMaker:
                 )
                 decisions.append(decision)
 
+                # 캐시용 데이터 (meeting_id, group_id 제외 - 컨텍스트 독립적)
+                cache_entities = {
+                    k: v for k, v in action.get("args", {}).items()
+                    if k not in ("meeting_id", "group_id")
+                }
+                decisions_for_cache.append({
+                    "intent": action["tool"],
+                    "confidence": data.get("confidence", 0.8),
+                    "entities": cache_entities,
+                    "reasoning": action.get("reasoning", "LLM 기반 결정")
+                })
+
                 logger.info(f"  → {decision.intent}: {decision.entities}")
 
             if not decisions:
@@ -157,6 +211,10 @@ class LLMDecisionMaker:
                     entities={"query": query, "meeting_id": meeting_id, "group_id": group_id},
                     reasoning="LLM 빈 응답 fallback"
                 ))
+            else:
+                # ===== 3. 캐시 저장 =====
+                if use_cache:
+                    await cache.set(query, decisions_for_cache, meeting_id, group_id)
 
             return decisions
 
